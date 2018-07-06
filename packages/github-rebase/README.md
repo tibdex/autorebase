@@ -3,7 +3,7 @@
 
 # Goal
 
-`github-rebase` rebases a pull request using the GitHub REST API. It doesn't "merge"/close the pull request, it only rebases its head branch on top of its base branch.
+`github-rebase` rebases a pull request using the GitHub REST API. It doesn't "merge"/close the pull request, it only rebases its head branch on top of its base branch. It can run on Node.js and in recent browsers.
 
 See also [autorebase](https://github.com/settings/apps/autorebase) if you want to automatically rebase and then "merge" green and up-to-date pull requests.
 
