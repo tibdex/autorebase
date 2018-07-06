@@ -6,6 +6,10 @@ jobs:
     steps:
       - checkout
       - run: yarn install
+      - run: yarn run build
+      - store_artifacts:
+          path: packages/autorebase/lib/autorebase.zip
+          destination: autorebase.zip
       - run: yarn run prettier --list-different
       - run: yarn run eslint
       - run: yarn flow check
@@ -18,10 +22,6 @@ jobs:
       - store_artifacts:
           path: coverage/lcov-report
           destination: coverage
-      - run: yarn run build
-      - store_artifacts:
-          path: packages/autorebase/lib/autorebase.zip
-          destination: autorebase.zip
 
   deploy:
     docker:
