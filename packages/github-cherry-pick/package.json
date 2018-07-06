@@ -28,6 +28,7 @@
   "license": "MIT",
   "main": "lib",
   "name": "github-cherry-pick",
+  "repository": "github:tibdex/autorebase",
   "scripts": {
     "build": "webpack-cli"
   },
