@@ -13,7 +13,8 @@ jobs:
       - run: yarn run prettier --list-different
       - run: yarn run eslint
       - run: yarn flow check
-      - run: yarn run test --coverage
+      # Run tests in sequence to stay below GitHub REST API abuse rate limits.
+      - run: yarn run test --coverage --runInBand
       - store_test_results:
           path: reports
       - store_artifacts:
