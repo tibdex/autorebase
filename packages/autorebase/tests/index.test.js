@@ -147,7 +147,7 @@ describe("nominal behavior", () => {
         return number;
       })
     );
-  }, 20000);
+  }, 25000);
 
   afterAll(async () => {
     await Promise.all([
@@ -217,6 +217,6 @@ describe("nominal behavior", () => {
       const fourthAutorebase = await autorebase({ octokit, owner, repo });
       expect(fourthAutorebase).toEqual({ type: "nop" });
     },
-    35000
+    50000
   );
 });
