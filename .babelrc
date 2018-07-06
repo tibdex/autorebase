@@ -1,6 +1,15 @@
 {
   "presets": [
-    ["env", { "targets": { "browsers": "defaults", "node": "6.11.2" } }],
+    [
+      "env",
+      {
+        "targets": {
+          "browsers":
+            "last 2 Chrome versions, last 2 Edge versions, last 2 Firefox versions, last 2 Safari versions",
+          "node": "6.11.2"
+        }
+      }
+    ],
     "flow"
   ],
   "env": {

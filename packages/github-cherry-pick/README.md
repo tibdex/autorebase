@@ -3,7 +3,7 @@
 
 # Goal
 
-`github-cherry-pick` cherry-picks several commits on a branch using [the low level Git Data operations provided by the GitHub REST API](https://developer.github.com/v3/git/). It can run on Node.js and in the browser.
+`github-cherry-pick` cherry-picks several commits on a branch using [the low level Git Data operations provided by the GitHub REST API](https://developer.github.com/v3/git/). It can run on Node.js and in recent browsers.
 
 See also [`github-rebase`](https://www.npmjs.com/package/github-rebase) if you want to rebase a pull request on its base branch.
 
