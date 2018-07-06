@@ -13,10 +13,7 @@ jobs:
       - run: yarn run prettier --list-different
       - run: yarn run eslint
       - run: yarn flow check
-      - run:
-          command: yarn run test --coverage --testResultsProcessor=jest-junit
-          environment:
-            JEST_JUNIT_OUTPUT: reports/junit.xml
+      - run: yarn run test --coverage
       - store_test_results:
           path: reports
       - store_artifacts:

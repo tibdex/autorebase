@@ -10,4 +10,5 @@ module.exports = {
       statements: 95,
     },
   },
+  reporters: ["default", ["jest-junit", { output: "./reports/junit.xml" }]],
 };
