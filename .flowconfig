@@ -1,0 +1,21 @@
+[ignore]
+
+[include]
+
+[libs]
+
+[lints]
+all=error
+untyped-type-import=off
+untyped-import=off
+
+[options]
+
+[strict]
+sketchy-null
+nonstrict-import
+unclear-type
+unsafe-getters-setters
+# untyped-import
+# See https://github.com/facebook/flow/issues/5278
+# untyped-type-import

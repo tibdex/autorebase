@@ -1,0 +1,6 @@
+/coverage/
+
+.env
+
+lib/
+node_modules/

@@ -1,0 +1,11 @@
+{
+  "presets": [
+    ["env", { "targets": { "browsers": "defaults", "node": "6.11.2" } }],
+    "flow"
+  ],
+  "env": {
+    "test": {
+      "presets": [["env", { "targets": { "node": "current" } }]]
+    }
+  }
+}

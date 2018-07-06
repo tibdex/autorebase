@@ -1,0 +1,26 @@
+{
+  "devDependencies": {
+    "@octokit/rest": "15.9.4",
+    "@tibdex/shared-internals": "0.1.0",
+    "babel-loader": "7.1.4",
+    "copy-webpack-plugin": "4.5.1",
+    "debug": "3.1.0",
+    "envalid": "4.1.4",
+    "jsonwebtoken": "8.3.0",
+    "github-rebase": "0.1.0",
+    "loud-rejection": "1.6.0",
+    "pkg-dir": "2.0.0",
+    "promise-retry": "1.1.1",
+    "uuid": "3.2.1",
+    "webpack": "4.12.0",
+    "webpack-cli": "3.0.4",
+    "zip-webpack-plugin": "3.0.0"
+  },
+  "name": "autorebase",
+  "private": true,
+  "scripts": {
+    "build": "webpack-cli",
+    "deploy": "node scripts/deploy"
+  },
+  "version": "0.1.0"
+}

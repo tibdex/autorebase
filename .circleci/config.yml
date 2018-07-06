@@ -1,0 +1,48 @@
+version: 2
+jobs:
+  check:
+    docker:
+      - image: circleci/node:10
+    steps:
+      - checkout
+      - run: yarn install
+      - run: yarn run prettier --list-different
+      - run: yarn run eslint
+      - run: yarn flow check
+      - run:
+          command: yarn run test --coverage --testResultsProcessor=jest-junit
+          environment:
+            JEST_JUNIT_OUTPUT: reports/junit.xml
+      - store_test_results:
+          path: reports
+      - store_artifacts:
+          path: coverage/lcov-report
+          destination: coverage
+      - run: yarn run build
+      - store_artifacts:
+          path: packages/autorebase/lib/autorebase.zip
+          destination: autorebase.zip
+
+  deploy:
+    docker:
+      - image: circleci/node:10
+    steps:
+      - checkout
+      - run: yarn install
+      - run: yarn run build
+      - run:
+          command: yarn run deploy
+          working_directory: packages/autorebase
+
+workflows:
+  version: 2
+  check-or-deploy:
+    jobs:
+      - check:
+          filters:
+            branches:
+              ignore: master
+      - deploy:
+          filters:
+            branches:
+              only: master
