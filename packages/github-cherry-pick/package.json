@@ -5,8 +5,8 @@
   },
   "description": "Cherry-pick several commits on a branch using the low level Git Data operations provided by the GitHub REST API",
   "devDependencies": {
-    "@tibdex/shared-internals": "0.1.0",
     "@octokit/rest": "15.9.4",
+    "@tibdex/shared-internals": "0.1.0",
     "babel-loader": "7.1.4",
     "envalid": "4.1.4",
     "webpack": "4.12.0",
