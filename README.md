@@ -17,6 +17,8 @@ Autorebase integrates especially well in repositories with branch protection set
 3.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the "autorebase" label to it](https://help.github.com/articles/creating-a-label/).
 4.  :sparkles: That's it! Pull requests with the "autorebase" label will then be rebased when their base branch moved forward (`mergeable_state === "behind"`) and "rebased and merged" once the required status checks are green and up-to-date (`mergeable_state === "clean"`).
 
+# [Try It!](https://github.com/apps/autorebase)
+
 # FAQ
 
 ## How Does It Work?
