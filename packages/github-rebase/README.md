@@ -3,9 +3,9 @@
 
 # Goal
 
-`github-rebase` rebases a pull request using the GitHub REST API. It doesn't "merge"/close the pull request, it only rebases its head branch on top of its base branch. It can run on Node.js and in recent browsers.
+`github-rebase` rebases a pull request using the GitHub REST API. It doesn't merge the pull request, it only rebases its head branch on top of its base branch.
 
-See also [autorebase](https://github.com/settings/apps/autorebase) if you want to automatically rebase and then "merge" green and up-to-date pull requests.
+See also [Autorebase](https://github.com/tibdex/autorebase) if you want to automatically rebase and merge green and up-to-date pull requests.
 
 # Usage
 
@@ -27,15 +27,17 @@ githubRebase({
 });
 ```
 
+`github-rebase` can run on Node.js and in recent browsers.
+
 ## Troubleshooting
 
 `github-rebase` uses [`debug`](https://www.npmjs.com/package/debug) to log helpful information at different steps of the cherry-picking process. To enable these logs, set the `DEBUG` environment variable to `github-rebase`.
 
 # How it works
 
-The GitHub REST API doesn't provide a direct endpoint to rebase a pull request without "merging"/closing it.
-However, a rebase can be seen as a cherry-pick where the head and base branches would be reversed.
-`github-rebase` thus relies on [`github-cherry-pick`](https://www.npmjs.com/package/github-cherry-pick) to handle the relevant cherry-pick operations needed to perform a rebase.
+The GitHub REST API doesn't provide a direct endpoint to rebase a pull request without merging it.
+However, a rebase can be seen as one or multiple cherry-pick operations where the head and base branches would be reversed.
+`github-rebase` thus relies on [`github-cherry-pick`](https://www.npmjs.com/package/github-cherry-pick) to perform all the relevant cherry-pick operations needed to perform a rebase.
 
 ## Step by step
 
@@ -64,7 +66,7 @@ git commit --message D
 * a5c5755 A
 ```
 
-and a pull request where `master` is the base branch and `feature` the head branch. GitHub would say it as: "The user wants to merge 2 commits into `master` from `feature`".
+and a pull request where `master` is the base branch and `feature` the head branch. GitHub would say: "The user wants to merge 2 commits into `master` from `feature`".
 
 To rebase the pull request, `github-rebase` would then take the following steps:
 
@@ -93,7 +95,7 @@ To rebase the pull request, `github-rebase` would then take the following steps:
     * a5c5755 A
     ```
     ````
-3.  Check that `feature`'s reference is still `017bffc` with [GET /repos/:owner/:repo/git/refs/:ref](https://developer.github.com/v3/git/refs/#get-a-reference) or jump to step 5.
+3.  Check that `feature`'s reference is still `017bffc` with [GET /repos/:owner/:repo/git/refs/:ref](https://developer.github.com/v3/git/refs/#get-a-reference) or abort by jumpimg to step 5.
 4.  Set `feature`'s reference to the same one than `temp` with [PATCH /repos/:owner/:repo/git/refs/:ref](https://developer.github.com/v3/git/refs/#update-a-reference).
     <!-- no corresponding Git CLI operation -->
     ```

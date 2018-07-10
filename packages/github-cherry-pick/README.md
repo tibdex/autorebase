@@ -3,7 +3,7 @@
 
 # Goal
 
-`github-cherry-pick` cherry-picks several commits on a branch using [the low level Git Data operations provided by the GitHub REST API](https://developer.github.com/v3/git/). It can run on Node.js and in recent browsers.
+`github-cherry-pick` cherry-picks several commits on a branch using [the low level Git Data operations provided by the GitHub REST API](https://developer.github.com/v3/git/).
 
 See also [`github-rebase`](https://www.npmjs.com/package/github-rebase) if you want to rebase a pull request on its base branch.
 
@@ -34,6 +34,8 @@ githubCherryPick({
 });
 ```
 
+`github-cherry-pick` can run on Node.js and in recent browsers.
+
 ## Troubleshooting
 
 `github-cherry-pick` uses [`debug`](https://www.npmjs.com/package/debug) to log helpful information at different steps of the cherry-picking process. To enable these logs, set the `DEBUG` environment variable to `github-cherry-pick`.
@@ -46,7 +48,7 @@ The GitHub REST API doesn't provide a direct endpoint for cherry-picking commits
 - creating a commit from a Git tree
 - creating/updating/deleting references
 
-It turns out that's all what's needed to perform a cherry-pick!
+It turns out that's all we need to perform a cherry-pick!
 
 ## Step by step
 
