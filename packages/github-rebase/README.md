@@ -33,13 +33,13 @@ githubRebase({
 
 `github-rebase` uses [`debug`](https://www.npmjs.com/package/debug) to log helpful information at different steps of the cherry-picking process. To enable these logs, set the `DEBUG` environment variable to `github-rebase`.
 
-# How it works
+# How it Works
 
 The GitHub REST API doesn't provide a direct endpoint to rebase a pull request without merging it.
 However, a rebase can be seen as one or multiple cherry-pick operations where the head and base branches would be reversed.
 `github-rebase` thus relies on [`github-cherry-pick`](https://www.npmjs.com/package/github-cherry-pick) to perform all the relevant cherry-pick operations needed to perform a rebase.
 
-## Step by step
+## Step by Step
 
 Let's say we have this Git state:
 

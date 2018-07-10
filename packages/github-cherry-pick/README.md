@@ -40,7 +40,7 @@ githubCherryPick({
 
 `github-cherry-pick` uses [`debug`](https://www.npmjs.com/package/debug) to log helpful information at different steps of the cherry-picking process. To enable these logs, set the `DEBUG` environment variable to `github-cherry-pick`.
 
-# How it works
+# How it Works
 
 The GitHub REST API doesn't provide a direct endpoint for cherry-picking commits on a branch but it does provide lower level Git operations such as:
 
@@ -50,7 +50,7 @@ The GitHub REST API doesn't provide a direct endpoint for cherry-picking commits
 
 It turns out that's all we need to perform a cherry-pick!
 
-## Step by step
+## Step by Step
 
 Let's say we have this Git state:
 
