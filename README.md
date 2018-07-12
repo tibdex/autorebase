@@ -32,7 +32,7 @@ Autorebase relies on [`github-rebase`](packages/github-rebase/README.md) (which 
 ### Permissions
 
 - **Repository contents** _[read & write]_: because the rebasing process requires creating commits and manipulating branches.
-- **Issues** _[read-only]_: to find pull requests with the "autorebase" label.
+- **Issues** _[read & write]_: to manipulate labels relevant to Autorebase on pull requests.
 - **Pull requests** _[read & write]_: to merge pull requests.
 - **Commit statuses** _[read-only]_: to know whether the status checks are green or not.
 

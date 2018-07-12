@@ -13,8 +13,6 @@ import { rebasePullRequest } from "github-rebase";
 
 import { name as packageName } from "../package";
 
-const debug = createDebug(packageName);
-
 type LabelName = string;
 
 type Options = {
@@ -44,11 +42,23 @@ type MergeableState =
   | "unstable";
 
 type PullRequest = {
+  alreadyBeingRebased: boolean,
   head: Reference,
   mergeableState: MergeableState,
   number: PullRequestNumber,
   rebaseable: boolean,
 };
+
+// Label used to flag pull requests that are being rebased.
+// Autorebase can be called multiple times in a short period of time,
+// especially since it listens to push events and that the rebase process triggers lots of them.
+// It's important to ensure that these batches of calls don't end-up in concurrent rebase of the same pull request.
+// Otherwise, Autorebase would be stuck in an infinite loop.
+// To prevent this from happening, we flag pull requests being rebased with a label.
+// Subsequent Autorebase calls will make sure not to try to rebase a pull request with this label already attached.
+const rebasingLabel = "autorebasing";
+
+const debug = createDebug(packageName);
 
 const getPullRequestNumbers = response =>
   response.data.items.map(({ number }) => number);
@@ -89,11 +99,13 @@ const fetchPullRequests = async ({
     ({
       data: {
         head: { ref: head },
+        labels,
         mergeable_state,
         rebaseable,
         number,
       },
     }) => ({
+      alreadyBeingRebased: labels.some(({ name }) => name === rebasingLabel),
       head,
       mergeableState: mergeable_state,
       number,
@@ -102,20 +114,23 @@ const fetchPullRequests = async ({
   );
 };
 
-const organizePullRequests = pullRequests => {
-  const rebasablePullRequests = pullRequests.filter(
-    ({ mergeableState, rebaseable }) =>
-      (mergeableState === "behind" || mergeableState === "clean") && rebaseable
+const getPullRequestToRebaseOrMerge = (
+  pullRequests
+): { pullRequestToMerge?: PullRequest, pullRequestToRebase?: PullRequest } => {
+  const rebaseablePullRequests = pullRequests.filter(
+    ({ rebaseable }) => rebaseable
   );
-  const pullRequestToMerge = rebasablePullRequests.find(
+  const pullRequestToMerge = rebaseablePullRequests.find(
     ({ mergeableState }) => mergeableState === "clean"
   );
-  const [pullRequestToRebase] = rebasablePullRequests;
-  return {
-    pullRequestToMerge,
-    pullRequestToRebase,
-    rebasablePullRequests,
-  };
+  if (pullRequestToMerge) {
+    return { pullRequestToMerge };
+  }
+  const pullRequestToRebase = rebaseablePullRequests.find(
+    ({ alreadyBeingRebased, mergeableState }) =>
+      !alreadyBeingRebased && mergeableState === "behind"
+  );
+  return pullRequestToRebase ? { pullRequestToRebase } : {};
 };
 
 const merge = async ({ head, number, octokit, owner, repo }) => {
@@ -136,9 +151,38 @@ const merge = async ({ head, number, octokit, owner, repo }) => {
   };
 };
 
+const withRebasingLabel = async ({ action, number, octokit, owner, repo }) => {
+  debug("adding rebasing label", number);
+  await octokit.issues.addLabels({
+    labels: [rebasingLabel],
+    number,
+    owner,
+    repo,
+  });
+
+  try {
+    return await action();
+  } finally {
+    debug("removing rebasing label", number);
+    await octokit.issues.removeLabel({
+      name: rebasingLabel,
+      number,
+      owner,
+      repo,
+    });
+  }
+};
+
 const rebase = async ({ number, octokit, owner, repo }) => {
   debug("rebasing", number);
-  await rebasePullRequest({
+  await withRebasingLabel({
+    action: () =>
+      rebasePullRequest({
+        number,
+        octokit,
+        owner,
+        repo,
+      }),
     number,
     octokit,
     owner,
@@ -172,13 +216,11 @@ const autorebase = async ({
   const {
     pullRequestToMerge,
     pullRequestToRebase,
-    rebasablePullRequests,
-  } = organizePullRequests(pullRequests);
+  } = getPullRequestToRebaseOrMerge(pullRequests);
   debug("pull requests", {
     pullRequests,
     pullRequestToMerge,
     pullRequestToRebase,
-    rebasablePullRequests,
   });
   if (pullRequestToMerge) {
     return merge({
@@ -195,5 +237,7 @@ const autorebase = async ({
   debug("nothing to do");
   return { type: "nop" };
 };
+
+export { rebasingLabel };
 
 export default autorebase;

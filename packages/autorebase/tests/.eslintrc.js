@@ -6,6 +6,7 @@ module.exports = {
   },
   rules: {
     "init-declarations": "off",
+    "max-lines": "off",
     "max-statements": "off",
   },
 };

@@ -11,7 +11,25 @@ import {
 import promiseRetry from "promise-retry";
 import generateUuid from "uuid/v4";
 
-import autorebase from "../src/autorebase";
+import autorebase, { rebasingLabel } from "../src/autorebase";
+
+const protectBranch = async ({ octokit, owner, ref: branch, repo }) => {
+  await octokit.repos.updateBranchProtection({
+    branch,
+    enforce_admins: true,
+    owner,
+    repo,
+    required_pull_request_reviews: null,
+    required_status_checks: { contexts: ["default"], strict: true },
+    restrictions: null,
+  });
+  return () =>
+    octokit.repos.removeBranchProtection({
+      branch,
+      owner,
+      repo,
+    });
+};
 
 const checkKnownMergeableState = async ({ number, octokit, owner, repo }) => {
   const {
@@ -76,7 +94,7 @@ describe("nominal behavior", () => {
       message: initial,
     },
     {
-      lines: [master1st, initial, initial, initial],
+      lines: [master1st, initial, initial],
       message: master1st,
     },
     {
@@ -98,7 +116,7 @@ describe("nominal behavior", () => {
     },
   };
 
-  let numberA, numberB, refsDetails;
+  let numberA, numberB, refsDetails, removeMasterProtection;
 
   beforeAll(async () => {
     ({ refsDetails } = await createReferences({
@@ -108,14 +126,11 @@ describe("nominal behavior", () => {
       state,
     }));
 
-    await octokit.repos.updateBranchProtection({
-      branch: refsDetails.master.ref,
-      enforce_admins: true,
+    removeMasterProtection = await protectBranch({
+      octokit,
       owner,
+      ref: refsDetails.master.ref,
       repo,
-      required_pull_request_reviews: null,
-      required_status_checks: { contexts: ["default"], strict: true },
-      restrictions: null,
     });
 
     [numberA, numberB] = await Promise.all(
@@ -152,11 +167,7 @@ describe("nominal behavior", () => {
   afterAll(async () => {
     await Promise.all([
       (async () => {
-        await octokit.repos.removeBranchProtection({
-          branch: refsDetails.master.ref,
-          owner,
-          repo,
-        });
+        await removeMasterProtection();
         await deleteReference({
           octokit,
           owner,
@@ -213,6 +224,162 @@ describe("nominal behavior", () => {
         repo,
       });
       expect(thirdAutorebase).toEqual({ number: numberB, type: "merge" });
+
+      const fourthAutorebase = await autorebase({ octokit, owner, repo });
+      expect(fourthAutorebase).toEqual({ type: "nop" });
+    },
+    50000
+  );
+});
+
+describe("rebasing label acts as a lock", () => {
+  const options = {
+    label: generateUuid(),
+  };
+
+  const [initial, master1st, feature1st] = [
+    "initial",
+    "master 1st",
+    "feature 1st",
+  ];
+
+  const [initialCommit, master1stCommit, feature1stCommit] = [
+    {
+      lines: [initial, initial],
+      message: initial,
+    },
+    {
+      lines: [master1st, initial],
+      message: master1st,
+    },
+    {
+      lines: [initial, feature1st],
+      message: feature1st,
+    },
+  ];
+
+  const state = {
+    initialCommit,
+    refsCommits: {
+      feature: [feature1stCommit],
+      master: [master1stCommit],
+    },
+  };
+
+  let number, refsDetails, removeMasterProtection;
+
+  beforeAll(async () => {
+    ({ refsDetails } = await createReferences({
+      octokit,
+      owner,
+      repo,
+      state,
+    }));
+
+    removeMasterProtection = await protectBranch({
+      octokit,
+      owner,
+      ref: refsDetails.master.ref,
+      repo,
+    });
+
+    [{ number }] = await Promise.all([
+      createPullRequest({
+        base: refsDetails.master.ref,
+        head: refsDetails.feature.ref,
+        octokit,
+        owner,
+        repo,
+      }),
+      createSuccessStatus({
+        octokit,
+        owner,
+        ref: refsDetails.feature.ref,
+        repo,
+      }),
+    ]);
+
+    await Promise.all([
+      waitForKnownMergeableState({
+        number,
+        octokit,
+        owner,
+        repo,
+      }),
+      octokit.issues.addLabels({
+        labels: [options.label],
+        number,
+        owner,
+        repo,
+      }),
+    ]);
+  }, 25000);
+
+  afterAll(async () => {
+    await Promise.all([
+      (async () => {
+        await removeMasterProtection();
+        await deleteReference({
+          octokit,
+          owner,
+          ref: refsDetails.master.ref,
+          repo,
+        });
+      })(),
+      octokit.issues.deleteLabel({ name: options.label, owner, repo }),
+    ]);
+  });
+
+  test(
+    "pull request is not rebased when it already has the rebasing label",
+    async () => {
+      await octokit.issues.addLabels({
+        labels: [rebasingLabel],
+        number,
+        owner,
+        repo,
+      });
+      const firstAutorebase = await autorebase({
+        octokit,
+        options,
+        owner,
+        repo,
+      });
+      expect(firstAutorebase).toEqual({ type: "nop" });
+
+      await octokit.issues.removeLabel({
+        name: rebasingLabel,
+        number,
+        owner,
+        repo,
+      });
+      const secondAutorebase = await autorebase({
+        octokit,
+        options,
+        owner,
+        repo,
+      });
+      expect(secondAutorebase).toEqual({ number, type: "rebase" });
+
+      await createSuccessStatus({
+        octokit,
+        owner,
+        ref: refsDetails.feature.ref,
+        repo,
+      });
+      await waitForKnownMergeableState({
+        number,
+        octokit,
+        owner,
+        repo,
+      });
+      const thirdAutorebase = await autorebase({
+        octokit,
+        options,
+        owner,
+        repo,
+      });
+      expect(thirdAutorebase).toEqual({ number, type: "merge" });
 
       const fourthAutorebase = await autorebase({ octokit, owner, repo });
       expect(fourthAutorebase).toEqual({ type: "nop" });
