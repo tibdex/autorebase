@@ -14,7 +14,7 @@ import {
 import promiseRetry from "promise-retry";
 import generateUuid from "uuid/v4";
 
-import autorebase, { rebasingLabel } from "../src/autorebase";
+import autorebase from "../src/autorebase";
 
 const protectBranch = async ({ octokit, owner, ref: branch, repo }) => {
   await octokit.repos.updateBranchProtection({
@@ -334,35 +334,51 @@ describe("rebasing label acts as a lock", () => {
   });
 
   test(
-    "pull request is not rebased when it already has the rebasing label",
+    "concurrent calls of Autorebase lead to only one rebase attempt",
     async () => {
-      await octokit.issues.addLabels({
-        labels: [rebasingLabel],
-        number,
-        owner,
-        repo,
-      });
-      const firstAutorebase = await autorebase({
-        octokit,
-        options,
-        owner,
-        repo,
-      });
-      expect(firstAutorebase).toEqual({ type: "nop" });
+      let bothReadyToRebase = false;
+      let resolveOther;
 
-      await octokit.issues.removeLabel({
-        name: rebasingLabel,
+      const concurrentAutorebaseAttempts = await Promise.all(
+        new Array(2)
+          .fill(() =>
+            autorebase({
+              _intercept() {
+                if (!bothReadyToRebase) {
+                  bothReadyToRebase = true;
+                  return new Promise(resolve => {
+                    resolveOther = resolve;
+                  });
+                }
+
+                // Wait for a request to be made to GitHub before resolving the other call.
+                // We need to do that because removing a label on a pull request is not a perfectly atomic lock.
+                // Indeed, if two removal requests are made really close to one another (typically less than 10ms), GitHub will accept both of them.
+                octokit.pullRequests
+                  .get({ number, owner, repo })
+                  .then(resolveOther);
+
+                // Resolve this call immediately.
+                return Promise.resolve();
+              },
+              octokit,
+              options,
+              owner,
+              repo,
+            })
+          )
+          .map(attemptRebase => attemptRebase())
+      );
+
+      // Check that only one instance actually attempted to rebase the pull request.
+      expect(concurrentAutorebaseAttempts).toContainEqual({
         number,
-        owner,
-        repo,
+        type: "abort",
       });
-      const secondAutorebase = await autorebase({
-        octokit,
-        options,
-        owner,
-        repo,
+      expect(concurrentAutorebaseAttempts).toContainEqual({
+        number,
+        type: "rebase",
       });
-      expect(secondAutorebase).toEqual({ number, type: "rebase" });
 
       await createSuccessStatus({
         octokit,
