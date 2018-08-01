@@ -16,11 +16,13 @@ import { name as packageName } from "../package";
 type LabelName = string;
 
 type Options = {
-  // If truthy, pull requests without this label will be ignored.
-  label?: LabelName,
+  // Pull requests without this label will be ignored.
+  label: LabelName,
 };
 
 type Action =
+  // When Autorebase tries to rebase a pull request that doesn't have the label anymore.
+  | {| number: PullRequestNumber, type: "abort" |}
   | {| number: PullRequestNumber, type: "merge" |}
   | {| number: PullRequestNumber, type: "rebase" |}
   | {| type: "nop" |};
@@ -37,21 +39,11 @@ type MergeableState =
   | "unstable";
 
 type PullRequest = {
-  alreadyBeingRebased: boolean,
   head: Reference,
   mergeableState: MergeableState,
   number: PullRequestNumber,
   rebaseable: boolean,
 };
-
-// Label used to flag pull requests that are being rebased.
-// Autorebase can be called multiple times in a short period of time,
-// especially since it listens to push events and that the rebase process triggers lots of them.
-// It's important to ensure that these batches of calls don't end-up in concurrent rebase of the same pull request.
-// Otherwise, Autorebase would be stuck in an infinite loop.
-// To prevent this from happening, we flag pull requests being rebased with a label.
-// Subsequent Autorebase calls will make sure not to try to rebase a pull request with this label already attached.
-const rebasingLabel = "autorebasing";
 
 const debug = createDebug(packageName);
 
@@ -94,13 +86,11 @@ const fetchPullRequests = async ({
     ({
       data: {
         head: { ref: head },
-        labels,
         mergeable_state,
         rebaseable,
         number,
       },
     }) => ({
-      alreadyBeingRebased: labels.some(({ name }) => name === rebasingLabel),
       head,
       mergeableState: mergeable_state,
       number,
@@ -122,8 +112,7 @@ const getPullRequestToRebaseOrMerge = (
     return { pullRequestToMerge };
   }
   const pullRequestToRebase = rebaseablePullRequests.find(
-    ({ alreadyBeingRebased, mergeableState }) =>
-      !alreadyBeingRebased && mergeableState === "behind"
+    ({ mergeableState }) => mergeableState === "behind"
   );
   return pullRequestToRebase ? { pullRequestToRebase } : {};
 };
@@ -146,31 +135,51 @@ const merge = async ({ head, number, octokit, owner, repo }) => {
   };
 };
 
-const withRebasingLabel = async ({ action, number, octokit, owner, repo }) => {
-  debug("adding rebasing label", number);
-  await octokit.issues.addLabels({
-    labels: [rebasingLabel],
-    number,
-    owner,
-    repo,
-  });
-
+// Autorebase can be called multiple times in a short period of time.
+// It's better to ensure that these batches of calls don't end-up in concurrent rebase of the same pull request.
+// To prevent this from happening, we use a label as a lock.
+// Before Autorebase starts rebasing a pull request, it will acquire the lock by removing the label.
+// Subsequent Autorebase calls won't be able to do the same thing because the GitHub REST API prevents removing a label that's not already there.
+const withLabelLock = async ({
+  action,
+  label,
+  number,
+  octokit,
+  owner,
+  repo,
+}) => {
   try {
-    return await action();
-  } finally {
-    debug("removing rebasing label", number);
+    debug("acquiring lock", number);
     await octokit.issues.removeLabel({
-      name: rebasingLabel,
+      name: label,
       number,
       owner,
       repo,
     });
+  } catch (error) {
+    debug("lock already acquired by another process", number);
+    return false;
+  }
+
+  try {
+    debug("lock acquired", number);
+    await action();
+    return true;
+  } finally {
+    debug("releasing lock", number);
+    await octokit.issues.addLabels({
+      labels: [label],
+      number,
+      owner,
+      repo,
+    });
+    debug("lock released", number);
   }
 };
 
-const rebase = async ({ number, octokit, owner, repo }) => {
+const rebase = async ({ label, number, octokit, owner, repo }) => {
   debug("rebasing", number);
-  await withRebasingLabel({
+  const rebased = await withLabelLock({
     action: () =>
       rebasePullRequest({
         number,
@@ -178,32 +187,40 @@ const rebase = async ({ number, octokit, owner, repo }) => {
         owner,
         repo,
       }),
+    label,
     number,
     octokit,
     owner,
     repo,
   });
-  debug("rebased");
-  return {
-    number,
-    type: "rebase",
-  };
+
+  if (!rebased) {
+    debug("other process already rebasing, aborting", number);
+    return { number, type: "abort" };
+  }
+
+  debug("rebased", number);
+  return { number, type: "rebase" };
 };
 
 const autorebase = async ({
+  // Should only be used in tests.
+  _intercept = () => Promise.resolve(),
   octokit,
   options = { label: "autorebase" },
   owner,
   repo,
 }: {
+  _intercept?: () => Promise<void>,
   octokit: Github,
   options?: Options,
   owner: RepoOwner,
   repo: RepoName,
 }): Promise<Action> => {
   debug("starting", { options, owner, repo });
+  const { label } = options;
   const pullRequests = await fetchPullRequests({
-    label: options.label,
+    label,
     octokit,
     owner,
     repo,
@@ -227,12 +244,17 @@ const autorebase = async ({
     });
   }
   if (pullRequestToRebase) {
-    return rebase({ number: pullRequestToRebase.number, octokit, owner, repo });
+    await _intercept();
+    return rebase({
+      label,
+      number: pullRequestToRebase.number,
+      octokit,
+      owner,
+      repo,
+    });
   }
   debug("nothing to do");
   return { type: "nop" };
 };
-
-export { rebasingLabel };
 
 export default autorebase;
