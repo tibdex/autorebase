@@ -6,7 +6,7 @@
   <sup>:panda_face: Automated Pull Request Rebasing and Merging</sup>
 </h1>
 
-Autorebase is a GitHub App to automatically rebase and merge pull requests.
+Autorebase is a GitHub App to automatically rebase and merge pull requests. [Try it!](https://github.com/apps/autorebase)
 
 Autorebase integrates especially well in repositories with branch protection set up to enforce up-to-date status checks.
 
@@ -16,8 +16,6 @@ Autorebase integrates especially well in repositories with branch protection set
 2.  :closed_lock_with_key: [recommended] Protect the branches on which pull requests will be made, such as `master`. In particular, it's best to [enable required status checks](https://help.github.com/articles/enabling-required-status-checks/) with the "Require branches to be up to date before merging" option.
 3.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the "autorebase" label to it](https://help.github.com/articles/creating-a-label/).
 4.  :sparkles: That's it! Pull requests with the "autorebase" label will then be rebased when their base branch moved forward (`mergeable_state === "behind"`) and "rebased and merged" once the required status checks are green and up-to-date (`mergeable_state === "clean"`).
-
-# [Try It!](https://github.com/apps/autorebase)
 
 # FAQ
 
