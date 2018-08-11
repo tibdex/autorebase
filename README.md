@@ -1,7 +1,7 @@
 [![build status](https://img.shields.io/circleci/project/github/tibdex/autorebase.svg)](https://circleci.com/gh/tibdex/autorebase)
 
 <h1 align="center">
-  <img src="packages/autorebase/assets/logo.svg" height="250" width="250"/>
+  <img src="assets/logo.svg" height="250" width="250" alt="Autorebase logo"/>
   <p>Autorebase</p>
   <sup>:panda_face: Automated Pull Request Rebasing and Merging</sup>
 </h1>
@@ -30,8 +30,7 @@ Autorebase relies on [`github-rebase`](packages/github-rebase/README.md) (which 
 ### Permissions
 
 - **Repository contents** _[read & write]_: because the rebasing process requires creating commits and manipulating branches.
-- **Issues** _[read & write]_: to manipulate labels relevant to Autorebase on pull requests.
-- **Pull requests** _[read & write]_: to merge pull requests.
+- **Pull requests** _[read & write]_: to manipulate labels relevant to Autorebase and merge pull requests.
 - **Commit statuses** _[read-only]_: to know whether the status checks are green or not.
 
 ### Webhooks
@@ -76,7 +75,7 @@ Rebasing rewrites the Git history so it's best not to do it on pull requests whe
 
 ## What Are the Alternatives?
 
-- [Bors](https://github.com/apps/bors) for a more sophisticated rebasing strategy. Bors tries to batch pull requests together and see if the build is still passing on the "agglomerated pull request" before merging the corresponding pull requests. As opposed to Autorebase, Bors is stateful and cannot run as an Azure Function/AWS Lambda: it has much higher operating costs. You also need to host it yourself to use it on private repositories. And it produces merge commits.
+- [Bors](https://github.com/apps/bors) for a more sophisticated rebasing strategy. Bors tries to batch pull requests together and see if the build is still passing on the "agglomerated pull request" before merging the corresponding pull requests. As opposed to Autorebase, Bors is stateful and requires a database: it has higher operating costs. And it produces merge commits.
 - [automerge](https://github.com/apps/automerge) if you don't mind having merge commits in your Git history and either merging pull requests with stale status checks or having to rebase them manually.
 - [Refined GitHub browser extension](https://github.com/sindresorhus/refined-github) and in particular its [option to wait for checks when merging a pull request](https://github.com/sindresorhus/refined-github#highlights) if you don't mind having to keep your browser tab opened waiting for the status checks to be green before merging your pull requests. Like automerge, it comes short when the "Require branches to be up to date before merging" option is enabled.
 - [TravisCI](https://travis-ci.com/) goes halfway in the good direction: ["Rather than build the commits that have been pushed to the branch the pull request is from, we build the merge between the source branch and the upstream branch."](https://docs.travis-ci.com/user/pull-requests/#How-Pull-Requests-are-Built) but [they don't trigger a new build when the upstream/base branch move forward](https://github.com/travis-ci/travis-ci/issues/1620) so you still need to rebase your pull requests manually. Besides, it ties you to a specific CI provider as CircleCI, for instance, doesn't do the same "building the pull request from the merge commit provided by GitHub" trick.

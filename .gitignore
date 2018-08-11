@@ -1,7 +1,6 @@
+/app/
 /coverage/
+/node_modules/
 /reports/
 
 .env
-
-lib/
-node_modules/

@@ -2,12 +2,15 @@
 
 import assert from "assert";
 
-import { deleteReference, fetchReferenceSha } from "@tibdex/shared-internals";
-import { createTestContext } from "@tibdex/shared-internals/tests/context";
+import {
+  deleteReference,
+  fetchReferenceSha,
+} from "shared-github-internals/lib/git";
+import { createTestContext } from "shared-github-internals/lib/tests/context";
 import {
   createPullRequest,
   createReferences,
-} from "@tibdex/shared-internals/tests/git";
+} from "shared-github-internals/lib/tests/git";
 import promiseRetry from "promise-retry";
 import generateUuid from "uuid/v4";
 
