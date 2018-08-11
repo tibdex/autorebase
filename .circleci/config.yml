@@ -1,46 +1,18 @@
 version: 2
 jobs:
-  check:
+  build:
     docker:
       - image: circleci/node:10
     steps:
       - checkout
       - run: yarn install
       - run: yarn run build
-      - store_artifacts:
-          path: packages/autorebase/lib/autorebase.zip
-          destination: autorebase.zip
       - run: yarn run prettier --list-different
       - run: yarn run eslint
       - run: yarn flow check
-      # Run tests in sequence to stay below GitHub REST API abuse rate limits.
-      - run: yarn run test --coverage --runInBand
+      - run: yarn run test --coverage
       - store_test_results:
           path: reports
       - store_artifacts:
           path: coverage/lcov-report
           destination: coverage
-
-  deploy:
-    docker:
-      - image: circleci/node:10
-    steps:
-      - checkout
-      - run: yarn install
-      - run: yarn run build
-      - run:
-          command: yarn run deploy
-          working_directory: packages/autorebase
-
-workflows:
-  version: 2
-  check-or-deploy:
-    jobs:
-      - check:
-          filters:
-            branches:
-              ignore: master
-      - deploy:
-          filters:
-            branches:
-              only: master

@@ -1,15 +1,15 @@
 // @flow strict
 
 import type { Github } from "@octokit/rest";
+import createDebug from "debug";
+import { rebasePullRequest } from "github-rebase";
 import {
   type PullRequestNumber,
   type Reference,
   type RepoName,
   type RepoOwner,
   deleteReference,
-} from "@tibdex/shared-internals";
-import createDebug from "debug";
-import { rebasePullRequest } from "github-rebase";
+} from "shared-github-internals/lib/git";
 
 import { name as packageName } from "../package";
 
