@@ -2337,20 +2337,20 @@ getpass@^0.1.1:
   dependencies:
     assert-plus "^1.0.0"
 
-github-cherry-pick@^0.1.5:
-  version "0.1.6"
-  resolved "https://registry.yarnpkg.com/github-cherry-pick/-/github-cherry-pick-0.1.6.tgz#b1766300d811ad5ea5db6b64d4f9beaa1d8ccb6a"
+github-cherry-pick@^0.1.8:
+  version "0.1.8"
+  resolved "https://registry.yarnpkg.com/github-cherry-pick/-/github-cherry-pick-0.1.8.tgz#853cb6f0f6b33741ba079e6115932f4189f66236"
   dependencies:
     debug "^3.1.0"
-    shared-github-internals "^0.1.2"
+    shared-github-internals "^0.1.3"
 
-github-rebase@^0.1.5:
-  version "0.1.5"
-  resolved "https://registry.yarnpkg.com/github-rebase/-/github-rebase-0.1.5.tgz#393a25e5f54f9296ffdf8d20a1907ab98642eea8"
+github-rebase@^0.1.6:
+  version "0.1.6"
+  resolved "https://registry.yarnpkg.com/github-rebase/-/github-rebase-0.1.6.tgz#29d312e294b7d306c93c4d7fe99d894d7efb554d"
   dependencies:
     debug "^3.1.0"
-    github-cherry-pick "^0.1.5"
-    shared-github-internals "^0.1.2"
+    github-cherry-pick "^0.1.8"
+    shared-github-internals "^0.1.3"
 
 glob-base@^0.3.0:
   version "0.3.0"
@@ -4982,9 +4982,9 @@ setprototypeof@1.1.0:
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/setprototypeof/-/setprototypeof-1.1.0.tgz#d0bd85536887b6fe7c0d818cb962d9d91c54e656"
 
-shared-github-internals@^0.1.2:
-  version "0.1.2"
-  resolved "https://registry.yarnpkg.com/shared-github-internals/-/shared-github-internals-0.1.2.tgz#7d9cd6268828a890091a1da9b97ba17727226344"
+shared-github-internals@^0.1.3:
+  version "0.1.3"
+  resolved "https://registry.yarnpkg.com/shared-github-internals/-/shared-github-internals-0.1.3.tgz#691faadf2f9c9621847beef8ac3e18036d8c695a"
   dependencies:
     "@octokit/rest" "^15.9.5"
     envalid "^4.1.4"
