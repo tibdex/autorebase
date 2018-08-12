@@ -25,20 +25,15 @@ type Action =
   | {| number: PullRequestNumber, type: "rebase" |}
   | {| type: "nop" |};
 
-// This property is not documented but after some investigation,
-// the meaning of each possible value is:
+/**
+ * See https://developer.github.com/v4/enum/mergestatestatus/
+ */
 type MergeableState =
-  // The pull request is not up-to-date anymore: the base branched has moved.
   | "behind"
-  // The pull request is up-to-date but some branch protections prevent it to be merged.
   | "blocked"
-  // The pull request is up-to-date and can be merged.
   | "clean"
-  // There are Git conflicts that prevent the branch to be merged or rebased.
   | "dirty"
-  // GitHub doesn't know the state of the pull request yet.
   | "unknown"
-  // The pull request is mergeable but in a pending or failed state.
   | "unstable";
 
 type PullRequest = {
