@@ -35,8 +35,8 @@ Autorebase relies on [`github-rebase`](https://www.npmjs.com/package/github-reba
 
 ### Webhooks
 
-- **Push**: to detect when a pull request base branch moved forward.
-- **Pull request**: to detect when the "autorebase" label is added/removed.
+- **Pull request**: to detect when the "autorebase" label is added/removed and when a pull request is closed.
+  Indeed, closing a pull request by merging its changes on its base branch may require rebasing other pull requests based on the same branch since they are now outdated.
 - **Pull request review**: because it can change the mergeable state of pull requests.
 - **Status**: to know when the status checks turn green.
 
