@@ -30,6 +30,7 @@ Autorebase relies on [`github-rebase`](https://www.npmjs.com/package/github-reba
 ### Permissions
 
 - **Repository contents** _[read & write]_: because the rebasing process requires creating commits and manipulating branches.
+- **Issues** _[read & write]_: to search for pull requests to rebase or merge and add to manipulate labels on pull requests.
 - **Pull requests** _[read & write]_: to manipulate labels relevant to Autorebase and merge pull requests.
 - **Commit statuses** _[read-only]_: to know whether the status checks are green or not.
 
