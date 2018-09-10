@@ -6,7 +6,7 @@
     "babel-preset-flow": "^6.23.0",
     "debug": "^3.1.0",
     "github-rebase": "^0.1.10",
-    "probot": "^7.0.0",
+    "probot": "^7.1.1",
     "promise-retry": "^1.1.1",
     "shared-github-internals": "^0.1.3"
   },
