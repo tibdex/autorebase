@@ -21,7 +21,7 @@ Autorebase integrates especially well in repositories with branch protection set
 
 ## How Does It Work?
 
-Autorebase relies on [`github-rebase`](https://www.npmjs.com/package/github-rebase) (which itself relies on [`github-cherry-pick`](https://www.npmjs.com/package/github-cherry-pick)) to perform all the required Git operations directly through the GitHub REST API instead of having to clone repositories on a server and executing Git CLI commands.
+Autorebase relies on [`github-rebase`](https://www.npmjs.com/package/github-rebase) to perform all the required Git operations directly through the GitHub REST API instead of having to clone repositories on a server and executing Git CLI commands.
 
 `github-rebase` is the :old_key: to being able to run Autorebase as a stateless, easy to maintain, and cheap to operate, GitHub App!
 

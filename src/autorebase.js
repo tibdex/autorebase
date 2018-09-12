@@ -2,7 +2,7 @@
 
 import type { Github } from "@octokit/rest";
 import createDebug from "debug";
-import { rebasePullRequest } from "github-rebase";
+import rebasePullRequest from "github-rebase";
 import {
   type PullRequestNumber,
   type Reference,

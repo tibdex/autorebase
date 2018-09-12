@@ -2350,19 +2350,19 @@ getpass@^0.1.1:
   dependencies:
     assert-plus "^1.0.0"
 
-github-cherry-pick@^0.1.11:
-  version "0.1.11"
-  resolved "https://registry.yarnpkg.com/github-cherry-pick/-/github-cherry-pick-0.1.11.tgz#7599d98a0808d021f5dfd5718af8597ed5708def"
+github-cherry-pick@^0.1.14:
+  version "0.1.14"
+  resolved "https://registry.yarnpkg.com/github-cherry-pick/-/github-cherry-pick-0.1.14.tgz#d7606327175d9cfab72fb3d28d8842694fa8dc16"
   dependencies:
     debug "^3.1.0"
-    shared-github-internals "^0.1.3"
+    shared-github-internals "^0.1.4"
 
-github-rebase@^0.1.10:
-  version "0.1.10"
-  resolved "https://registry.yarnpkg.com/github-rebase/-/github-rebase-0.1.10.tgz#f1524ad7a1fdd0f1a32956c0e51fd605a94cf480"
+github-rebase@^0.2.1:
+  version "0.2.1"
+  resolved "https://registry.yarnpkg.com/github-rebase/-/github-rebase-0.2.1.tgz#4433c94fee0de7fb9d23a71e76f9bc74ecf7fdbd"
   dependencies:
     debug "^3.1.0"
-    github-cherry-pick "^0.1.11"
+    github-cherry-pick "^0.1.14"
     shared-github-internals "^0.1.4"
 
 glob-base@^0.3.0:
