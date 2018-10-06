@@ -29,12 +29,14 @@ module.exports = {
     // Flow takes care of the rest, same thing for no-eq-null.
     eqeqeq: ["error", "smart"],
     "linebreak-style": "off",
-    "max-lines-per-function": ["error", 60],
+    "max-lines": ["error", 350],
+    "max-lines-per-function": ["error", 70],
     "max-statements": ["error", 15],
     "multiline-comment-style": ["error", "separate-lines"],
     "no-eq-null": "off",
     "no-magic-numbers": "off",
     "no-ternary": "off",
+    "no-undefined": "off",
     "one-var": "off",
     // Not supported by babel-preset-env yet.
     "prefer-object-spread": "off",
