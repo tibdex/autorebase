@@ -3,19 +3,20 @@
 <h1 align="center">
   <img src="assets/logo.svg" height="250" width="250" alt="Autorebase logo"/>
   <p>Autorebase</p>
-  <sup>:panda_face: Automated Pull Request Rebasing and Merging</sup>
 </h1>
 
-Autorebase is a GitHub App, based on [Probot](https://probot.github.io/), to automatically [rebase and merge](https://help.github.com/articles/about-merge-methods-on-github/#rebasing-and-merging-your-commits) pull requests. [Try it!](https://github.com/apps/autorebase)
+Autorebase aims to make the Rebase Workflow enjoyable and keep `master` always green. [Try it!](https://github.com/apps/autorebase)
 
-Autorebase integrates especially well in repositories with branch protection set up to enforce up-to-date status checks.
+Autorebase is a GitHub App, based on [Probot](https://probot.github.io/), that automatically [rebase and merge](https://help.github.com/articles/about-merge-methods-on-github/#rebasing-and-merging-your-commits) pull requests.
+
+It integrates especially well in repositories with branch protection set up to enforce up-to-date status checks.
 
 # Usage
 
 1.  :electric_plug: Install the publicly hosted [Autorebase GitHub App](https://github.com/apps/autorebase) on your repository.
 2.  :closed_lock_with_key: [recommended] Protect the branches on which pull requests will be made, such as `master`. In particular, it's best to [enable required status checks](https://help.github.com/articles/enabling-required-status-checks/) with the "Require branches to be up to date before merging" option.
-3.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the "autorebase" label to it](https://help.github.com/articles/creating-a-label/).
-4.  :sparkles: That's it! Pull requests with the "autorebase" label will then be rebased when their base branch moved forward ([`mergeable_state === "behind"`](https://developer.github.com/v4/enum/mergestatestatus/#behind)) and "rebased and merged" once the required status checks are green and up-to-date ([`mergeable_state === "clean"`](https://developer.github.com/v4/enum/mergestatestatus/#clean)).
+3.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the `autorebase` label to it](https://help.github.com/articles/creating-a-label/).
+4.  :sparkles: That's it! Pull requests with the `autorebase` label will then be rebased when their base branch moved forward ([`mergeable_state === "behind"`](https://developer.github.com/v4/enum/mergestatestatus/#behind)) and "rebased and merged" once all the branch protections are respected ([`mergeable_state === "clean"`](https://developer.github.com/v4/enum/mergestatestatus/#clean)).
 
 # FAQ
 
@@ -31,13 +32,19 @@ Autorebase relies on [`github-rebase`](https://www.npmjs.com/package/github-reba
 
 - **Repository contents** _[read & write]_: because the rebasing process requires creating commits and manipulating branches.
 - **Issues** _[read & write]_: to search for pull requests to rebase or merge and add to manipulate labels on pull requests.
-- **Pull requests** _[read & write]_: to manipulate labels relevant to Autorebase and merge pull requests.
+- **Pull requests** _[read & write]_: to merge pull requests.
 - **Commit statuses** _[read-only]_: to know whether the status checks are green or not.
 
 ### Webhooks
 
-- **Pull request**: to detect when the "autorebase" label is added/removed and when a pull request is closed.
-  Indeed, closing a pull request by merging its changes on its base branch may require rebasing other pull requests based on the same branch since they are now outdated.
+- **Pull request**: to detect when the `autorebase` label is added/removed and when a pull request is closed.
+  Indeed, closing a pull request by merging its changes on its base branch may require rebasing other pull requests based on the same branch since they would now be outdated.
+
+  _Note:_ Instead of listening to the [`pull_request.closed`](https://developer.github.com/v3/activity/events/types/#pullrequestevent) webhook, Autorebase could listen to [`push`](https://developer.github.com/v3/activity/events/types/#pushevent) instead.
+  It would allow it to react when a commit was pushed to `master` without going through a pull request.
+  However, Autorebase would then receive much more events, especially since the rebasing process itself triggers many `push` events.
+  Thus, to prevent pull requests with the `autorebase` label to get stuck behind their base branch, try not to push commits to these base branches without going through pull requests.
+
 - **Pull request review**: because it can change the mergeable state of pull requests.
 - **Status**: to know when the status checks turn green.
 
@@ -47,7 +54,7 @@ To "keep `master` always green".
 
 The goal is to never merge a pull request that could threaten the stability of the base branch test suite.
 
-Green status checks are not enough to offer this guarantee. They must be up-to-date to ensure that the pull request was tested against the latest code on the base branch. Otherwise, you're exposed to ["semantic conflicts"](https://bors.tech/essay/2017/02/02/pitch/).
+Green status checks are not enough to offer this guarantee. They must be [up-to-date](https://help.github.com/articles/types-of-required-status-checks/) to ensure that the pull request was tested against the latest code on the base branch. Otherwise, you're exposed to ["semantic conflicts"](https://bors.tech/essay/2017/02/02/pitch/).
 
 ## Why Rebasing Instead of Squashing/Merging?
 
@@ -64,7 +71,13 @@ Merge commits are often seen as undesirable clutter:
 
 Besides, even when pull requests are "rebased and merged" (actually merged with the [`--ff-only`](https://git-scm.com/docs/git-merge#git-merge---ff-only) option), you can still, when looking at a commit on `master` in the GitHub UI, find out which pull request introduced it.
 
+### Enforcing Rebase Merging
+
 If you're convinced that rebasing is the best option, you can easily [enforce it as the only allowed method to merge pull requests on your repository](https://help.github.com/articles/configuring-commit-rebasing-for-pull-requests/).
+
+### Autosquashing
+
+Autorebase has built-in [autosquashing](https://git-scm.com/docs/git-rebase#git-rebase---autosquash) support. It will come in handy to automatically fixup/squash these commits added on pull requests after a reviewer requests changes.
 
 ## Why Not Clicking on the “Update Branch” Button Provided by GitHub Instead?
 

@@ -3,18 +3,15 @@ import autorebase from "./autorebase";
 module.exports = app => {
   app.log("App loaded");
 
-  app.on(
-    [
-      "pull_request.closed",
-      "pull_request.labeled",
-      "push",
-      "status",
-      "pull_request_review.submitted",
-    ],
-    async context => {
-      const { owner, repo } = context.repo();
-      const action = await autorebase({ octokit: context.github, owner, repo });
-      context.log(action);
-    }
-  );
+  app.on("*", async context => {
+    const { owner, repo } = context.repo();
+    const action = await autorebase({
+      eventAndPayload: { event: context.event, payload: context.payload },
+      octokit: context.github,
+      options: { label: "autorebase" },
+      owner,
+      repo,
+    });
+    context.log(action);
+  });
 };

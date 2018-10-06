@@ -1,71 +1,40 @@
 // @flow strict
 
-import assert from "assert";
-
-import {
-  deleteReference,
-  fetchReferenceSha,
-} from "shared-github-internals/lib/git";
+import createDebug from "debug";
+import { deleteReference } from "shared-github-internals/lib/git";
 import { createTestContext } from "shared-github-internals/lib/tests/context";
 import {
   createPullRequest,
   createReferences,
 } from "shared-github-internals/lib/tests/git";
-import promiseRetry from "promise-retry";
 import generateUuid from "uuid/v4";
 
+import { name as packageName } from "../package";
 import autorebase from "../src/autorebase";
+import { waitForKnownMergeableState } from "../src/utils";
 
-const protectBranch = async ({ octokit, owner, ref: branch, repo }) => {
-  await octokit.repos.updateBranchProtection({
-    branch,
-    enforce_admins: true,
-    owner,
-    repo,
-    required_pull_request_reviews: null,
-    required_status_checks: { contexts: ["default"], strict: true },
-    restrictions: null,
-  });
-  return () =>
-    octokit.repos.removeBranchProtection({
-      branch,
-      owner,
-      repo,
-    });
-};
+import {
+  createStatus,
+  getApprovedReviewPullRequestEventAndPayload,
+  getLabeledPullRequestEventAndPayload,
+  getMergedPullRequestEventAndPayload,
+  getStatusEventAndPayload,
+  protectBranch,
+} from "./utils";
 
-const checkKnownMergeableState = async ({ number, octokit, owner, repo }) => {
-  const {
-    data: { mergeable_state: mergeableState },
-  } = await octokit.pullRequests.get({ number, owner, repo });
-  assert.notEqual(mergeableState, "unknown");
-};
+const debug = createDebug(`${packageName}-test`);
 
-const waitForKnownMergeableState = ({ number, octokit, owner, repo }) =>
-  promiseRetry(
-    async retry => {
-      try {
-        await checkKnownMergeableState({ number, octokit, owner, repo });
-      } catch (error) {
-        await retry(error);
-      }
-    },
-    { minTimeout: 500 }
-  );
+const [initial, master1st] = ["initial", "master 1st"];
 
-const createSuccessStatus = async ({ octokit, owner, ref, repo }) => {
-  const sha = await fetchReferenceSha({
-    octokit,
-    owner,
-    ref,
-    repo,
-  });
-  await octokit.repos.createStatus({
-    owner,
-    repo,
-    sha,
-    state: "success",
-  });
+const debuggableStep = async (name, asyncAction) => {
+  debug(`[start] ${name}`);
+  try {
+    await asyncAction();
+    debug(`[done] ${name}`);
+  } catch (error) {
+    debug(`[failed] ${name}`);
+    throw error;
+  }
 };
 
 let octokit, owner, repo;
@@ -75,37 +44,37 @@ beforeAll(() => {
 });
 
 describe("nominal behavior", () => {
-  const options = {
-    label: generateUuid(),
-  };
+  const label = generateUuid();
+  const options = { label };
 
-  const [initial, master1st, featureA1st, featureB1st] = [
-    "initial",
-    "master 1st",
-    "feature A 1st",
-    "feature B 1st",
-  ];
+  const [featureA1st, featureB1st] = ["feature A 1st", "feature B 1st"];
+  const featureA2nd = `fixup! ${featureA1st}`;
 
   const [
     initialCommit,
     master1stCommit,
     featureA1stCommit,
+    featureA2ndCommit,
     featureB1stCommit,
   ] = [
     {
-      lines: [initial, initial, initial],
+      lines: [initial, initial, initial, initial],
       message: initial,
     },
     {
-      lines: [master1st, initial, initial],
+      lines: [master1st, initial, initial, initial],
       message: master1st,
     },
     {
-      lines: [initial, featureA1st, initial],
+      lines: [initial, featureA1st, initial, initial],
       message: featureA1st,
     },
     {
-      lines: [initial, initial, featureB1st],
+      lines: [initial, featureA1st, featureA2nd, initial],
+      message: featureA2nd,
+    },
+    {
+      lines: [initial, initial, initial, featureB1st],
       message: featureB1st,
     },
   ];
@@ -113,7 +82,7 @@ describe("nominal behavior", () => {
   const state = {
     initialCommit,
     refsCommits: {
-      featureA: [master1stCommit, featureA1stCommit],
+      featureA: [master1stCommit, featureA1stCommit, featureA2ndCommit],
       featureB: [featureB1stCommit],
       master: [master1stCommit],
     },
@@ -138,7 +107,7 @@ describe("nominal behavior", () => {
 
     [numberA, numberB] = await Promise.all(
       [refsDetails.featureA.ref, refsDetails.featureB.ref].map(async ref => {
-        const [{ number }] = await Promise.all([
+        const [number] = await Promise.all([
           createPullRequest({
             base: refsDetails.master.ref,
             head: ref,
@@ -146,7 +115,7 @@ describe("nominal behavior", () => {
             owner,
             repo,
           }),
-          createSuccessStatus({ octokit, owner, ref, repo }),
+          createStatus({ octokit, owner, ref, repo }),
         ]);
         await Promise.all([
           waitForKnownMergeableState({
@@ -156,7 +125,7 @@ describe("nominal behavior", () => {
             repo,
           }),
           octokit.issues.addLabels({
-            labels: [options.label],
+            labels: [label],
             number,
             owner,
             repo,
@@ -178,73 +147,176 @@ describe("nominal behavior", () => {
           repo,
         });
       })(),
-      octokit.issues.deleteLabel({ name: options.label, owner, repo }),
+      octokit.issues.deleteLabel({ name: label, owner, repo }),
     ]);
   });
 
   test(
-    "merge feature A first, then rebase feature B and merge it once up-to-date",
+    "full story",
     async () => {
-      const firstAutorebase = await autorebase({
-        octokit,
-        options,
-        owner,
-        repo,
-      });
-      expect(firstAutorebase).toEqual({ number: numberA, type: "merge" });
-
-      await waitForKnownMergeableState({
-        number: numberB,
-        octokit,
-        owner,
-        repo,
-      });
-      const secondAutorebase = await autorebase({
-        octokit,
-        options,
-        owner,
-        repo,
-      });
-      expect(secondAutorebase).toEqual({ number: numberB, type: "rebase" });
-
-      await createSuccessStatus({
-        octokit,
-        owner,
-        ref: refsDetails.featureB.ref,
-        repo,
+      await debuggableStep("feature A clean but autosquashed", async () => {
+        const result = await autorebase({
+          eventAndPayload: getLabeledPullRequestEventAndPayload({
+            label,
+            pullRequest: {
+              labeledAndOpenedAndRebaseable: true,
+              mergeableState: "clean",
+              number: numberA,
+            },
+          }),
+          octokit,
+          options,
+          owner,
+          repo,
+        });
+        expect(result).toEqual({ number: numberA, type: "rebase" });
       });
 
-      await waitForKnownMergeableState({
-        number: numberB,
-        octokit,
-        owner,
-        repo,
-      });
-      const thirdAutorebase = await autorebase({
-        octokit,
-        options,
-        owner,
-        repo,
-      });
-      expect(thirdAutorebase).toEqual({ number: numberB, type: "merge" });
+      await debuggableStep(
+        "feature B rebased because of error status on feature A",
+        async () => {
+          await waitForKnownMergeableState({
+            number: numberA,
+            octokit,
+            owner,
+            repo,
+          });
+          const featureASha = await createStatus({
+            error: true,
+            octokit,
+            owner,
+            ref: refsDetails.featureA.ref,
+            repo,
+          });
+          const result = await autorebase({
+            eventAndPayload: getStatusEventAndPayload(featureASha),
+            octokit,
+            options,
+            owner,
+            repo,
+          });
+          expect(result).toEqual({ number: numberB, type: "rebase" });
+        }
+      );
 
-      const fourthAutorebase = await autorebase({ octokit, owner, repo });
-      expect(fourthAutorebase).toEqual({ type: "nop" });
+      await debuggableStep(
+        "feature A merged after successful status",
+        async () => {
+          const featureASha = await createStatus({
+            octokit,
+            owner,
+            ref: refsDetails.featureA.ref,
+            repo,
+          });
+          await waitForKnownMergeableState({
+            number: numberA,
+            octokit,
+            owner,
+            repo,
+          });
+          const result = await autorebase({
+            eventAndPayload: getStatusEventAndPayload(featureASha),
+            octokit,
+            options,
+            owner,
+            repo,
+          });
+          expect(result).toEqual({ number: numberA, type: "merge" });
+        }
+      );
+
+      await debuggableStep(
+        "feature B rebased after feature A merged",
+        async () => {
+          await waitForKnownMergeableState({
+            number: numberB,
+            octokit,
+            owner,
+            repo,
+          });
+          const result = await autorebase({
+            eventAndPayload: getMergedPullRequestEventAndPayload(
+              refsDetails.master.ref
+            ),
+            octokit,
+            options,
+            owner,
+            repo,
+          });
+          expect(result).toEqual({ number: numberB, type: "rebase" });
+        }
+      );
+
+      await debuggableStep(
+        "feature B merged after review approval (with successful status)",
+        async () => {
+          await waitForKnownMergeableState({
+            number: numberB,
+            octokit,
+            owner,
+            repo,
+          });
+          await createStatus({
+            octokit,
+            owner,
+            ref: refsDetails.featureB.ref,
+            repo,
+          });
+          const {
+            mergeable_state: mergeableState,
+          } = await waitForKnownMergeableState({
+            number: numberB,
+            octokit,
+            owner,
+            repo,
+          });
+          const result = await autorebase({
+            eventAndPayload: getApprovedReviewPullRequestEventAndPayload({
+              label,
+              pullRequest: {
+                head: refsDetails.featureB.ref,
+                labeledAndOpenedAndRebaseable: true,
+                mergeableState,
+                number: numberB,
+              },
+            }),
+            octokit,
+            options,
+            owner,
+            repo,
+          });
+          expect(result).toEqual({ number: numberB, type: "merge" });
+        }
+      );
+
+      await debuggableStep("nothing to do after feature B merged", async () => {
+        await waitForKnownMergeableState({
+          number: numberB,
+          octokit,
+          owner,
+          repo,
+        });
+        const result = await autorebase({
+          eventAndPayload: getMergedPullRequestEventAndPayload(
+            refsDetails.master.ref
+          ),
+          octokit,
+          options,
+          owner,
+          repo,
+        });
+        expect(result).toEqual({ type: "nop" });
+      });
     },
-    50000
+    60000
   );
 });
 
 describe("rebasing label acts as a lock", () => {
-  const options = {
-    label: generateUuid(),
-  };
+  const label = generateUuid();
+  const options = { label };
 
-  const [initial, master1st, feature1st] = [
-    "initial",
-    "master 1st",
-    "feature 1st",
-  ];
+  const feature1st = "feature1st";
 
   const [initialCommit, master1stCommit, feature1stCommit] = [
     {
@@ -286,7 +358,7 @@ describe("rebasing label acts as a lock", () => {
       repo,
     });
 
-    [{ number }] = await Promise.all([
+    [number] = await Promise.all([
       createPullRequest({
         base: refsDetails.master.ref,
         head: refsDetails.feature.ref,
@@ -294,7 +366,7 @@ describe("rebasing label acts as a lock", () => {
         owner,
         repo,
       }),
-      createSuccessStatus({
+      createStatus({
         octokit,
         owner,
         ref: refsDetails.feature.ref,
@@ -310,7 +382,7 @@ describe("rebasing label acts as a lock", () => {
         repo,
       }),
       octokit.issues.addLabels({
-        labels: [options.label],
+        labels: [label],
         number,
         owner,
         repo,
@@ -329,7 +401,7 @@ describe("rebasing label acts as a lock", () => {
           repo,
         });
       })(),
-      octokit.issues.deleteLabel({ name: options.label, owner, repo }),
+      octokit.issues.deleteLabel({ name: label, owner, repo }),
     ]);
   });
 
@@ -361,6 +433,14 @@ describe("rebasing label acts as a lock", () => {
                 // Resolve this call immediately.
                 return Promise.resolve();
               },
+              eventAndPayload: getLabeledPullRequestEventAndPayload({
+                label,
+                pullRequest: {
+                  labeledAndOpenedAndRebaseable: true,
+                  mergeableState: "behind",
+                  number,
+                },
+              }),
               octokit,
               options,
               owner,
@@ -380,7 +460,7 @@ describe("rebasing label acts as a lock", () => {
         type: "rebase",
       });
 
-      await createSuccessStatus({
+      const newFeatureSha = await createStatus({
         octokit,
         owner,
         ref: refsDetails.feature.ref,
@@ -393,6 +473,7 @@ describe("rebasing label acts as a lock", () => {
         repo,
       });
       const thirdAutorebase = await autorebase({
+        eventAndPayload: getStatusEventAndPayload(newFeatureSha),
         octokit,
         options,
         owner,
@@ -400,9 +481,17 @@ describe("rebasing label acts as a lock", () => {
       });
       expect(thirdAutorebase).toEqual({ number, type: "merge" });
 
-      const fourthAutorebase = await autorebase({ octokit, owner, repo });
+      const fourthAutorebase = await autorebase({
+        eventAndPayload: getMergedPullRequestEventAndPayload(
+          refsDetails.master.ref
+        ),
+        octokit,
+        options,
+        owner,
+        repo,
+      });
       expect(fourthAutorebase).toEqual({ type: "nop" });
     },
-    50000
+    40000
   );
 });
