@@ -15,10 +15,10 @@ import { waitForKnownMergeableState } from "../src/utils";
 
 import {
   createStatus,
-  getApprovedReviewPullRequestEventAndPayload,
-  getLabeledPullRequestEventAndPayload,
-  getMergedPullRequestEventAndPayload,
-  getStatusEventAndPayload,
+  getApprovedReviewPullRequestEvent,
+  getLabeledPullRequestEvent,
+  getMergedPullRequestEvent,
+  getStatusEvent,
   protectBranch,
 } from "./utils";
 
@@ -156,7 +156,7 @@ describe("nominal behavior", () => {
     async () => {
       await debuggableStep("feature A clean but autosquashed", async () => {
         const result = await autorebase({
-          eventAndPayload: getLabeledPullRequestEventAndPayload({
+          event: getLabeledPullRequestEvent({
             label,
             pullRequest: {
               labeledAndOpenedAndRebaseable: true,
@@ -189,7 +189,7 @@ describe("nominal behavior", () => {
             repo,
           });
           const result = await autorebase({
-            eventAndPayload: getStatusEventAndPayload(featureASha),
+            event: getStatusEvent(featureASha),
             octokit,
             options,
             owner,
@@ -215,7 +215,7 @@ describe("nominal behavior", () => {
             repo,
           });
           const result = await autorebase({
-            eventAndPayload: getStatusEventAndPayload(featureASha),
+            event: getStatusEvent(featureASha),
             octokit,
             options,
             owner,
@@ -235,9 +235,7 @@ describe("nominal behavior", () => {
             repo,
           });
           const result = await autorebase({
-            eventAndPayload: getMergedPullRequestEventAndPayload(
-              refsDetails.master.ref
-            ),
+            event: getMergedPullRequestEvent(refsDetails.master.ref),
             octokit,
             options,
             owner,
@@ -271,7 +269,7 @@ describe("nominal behavior", () => {
             repo,
           });
           const result = await autorebase({
-            eventAndPayload: getApprovedReviewPullRequestEventAndPayload({
+            event: getApprovedReviewPullRequestEvent({
               label,
               pullRequest: {
                 head: refsDetails.featureB.ref,
@@ -297,9 +295,7 @@ describe("nominal behavior", () => {
           repo,
         });
         const result = await autorebase({
-          eventAndPayload: getMergedPullRequestEventAndPayload(
-            refsDetails.master.ref
-          ),
+          event: getMergedPullRequestEvent(refsDetails.master.ref),
           octokit,
           options,
           owner,
@@ -433,7 +429,7 @@ describe("rebasing label acts as a lock", () => {
                 // Resolve this call immediately.
                 return Promise.resolve();
               },
-              eventAndPayload: getLabeledPullRequestEventAndPayload({
+              event: getLabeledPullRequestEvent({
                 label,
                 pullRequest: {
                   labeledAndOpenedAndRebaseable: true,
@@ -473,7 +469,7 @@ describe("rebasing label acts as a lock", () => {
         repo,
       });
       const thirdAutorebase = await autorebase({
-        eventAndPayload: getStatusEventAndPayload(newFeatureSha),
+        event: getStatusEvent(newFeatureSha),
         octokit,
         options,
         owner,
@@ -482,9 +478,7 @@ describe("rebasing label acts as a lock", () => {
       expect(thirdAutorebase).toEqual({ number, type: "merge" });
 
       const fourthAutorebase = await autorebase({
-        eventAndPayload: getMergedPullRequestEventAndPayload(
-          refsDetails.master.ref
-        ),
+        event: getMergedPullRequestEvent(refsDetails.master.ref),
         octokit,
         options,
         owner,

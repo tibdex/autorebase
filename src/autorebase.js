@@ -35,16 +35,16 @@ type Action =
 /**
  * See https://developer.github.com/webhooks/#events
  */
-type EventAndPayload =
+type Event =
   | {|
-      event: "pull_request",
+      name: "pull_request",
       payload: {
         action: "closed" | "opened" | "synchronize",
         pull_request: PullRequestPayload,
       },
     |}
   | {|
-      event: "pull_request",
+      name: "pull_request",
       payload: {
         action: "labeled",
         label: { name: LabelName },
@@ -52,14 +52,14 @@ type EventAndPayload =
       },
     |}
   | {|
-      event: "pull_request_review",
+      name: "pull_request_review",
       payload: {
         action: "dismissed" | "edited" | "submitted",
         pull_request: PullRequestPayload,
       },
     |}
   | {|
-      event: "status",
+      name: "status",
       payload: {
         sha: Sha,
       },
@@ -178,29 +178,29 @@ const autorebasePullRequest = async ({
 const autorebase = async ({
   // Should only be used in tests.
   _intercept = () => Promise.resolve(),
-  eventAndPayload,
+  event,
   octokit,
   options,
   owner,
   repo,
 }: {
   _intercept?: () => Promise<void>,
-  eventAndPayload: EventAndPayload,
+  event: Event,
   octokit: Github,
   options: Options,
   owner: RepoOwner,
   repo: RepoName,
 }): Promise<Action> => {
   const { label } = options;
-  debug("starting", { event: eventAndPayload.event, label });
+  debug("starting", { label, name: event.name });
 
-  if (eventAndPayload.event === "status") {
+  if (event.name === "status") {
     const pullRequest = await findAutorebaseablePullRequestMatchingSha({
       label,
       octokit,
       owner,
       repo,
-      sha: eventAndPayload.payload.sha,
+      sha: event.payload.sha,
     });
 
     if (pullRequest) {
@@ -234,18 +234,18 @@ const autorebase = async ({
       label,
       octokit,
       owner,
-      pullRequest: eventAndPayload.payload.pull_request,
+      pullRequest: event.payload.pull_request,
       repo,
     });
     debug("pull request from payload", pullRequest);
 
-    if (eventAndPayload.event === "pull_request") {
+    if (event.name === "pull_request") {
       if (
         pullRequest.labeledAndOpenedAndRebaseable &&
-        (eventAndPayload.payload.action === "opened" ||
-          eventAndPayload.payload.action === "synchronize" ||
-          (eventAndPayload.payload.action === "labeled" &&
-            eventAndPayload.payload.label.name === options.label))
+        (event.payload.action === "opened" ||
+          event.payload.action === "synchronize" ||
+          (event.payload.action === "labeled" &&
+            event.payload.label.name === options.label))
       ) {
         await _intercept();
         return autorebasePullRequest({
@@ -255,10 +255,7 @@ const autorebase = async ({
           pullRequest,
           repo,
         });
-      } else if (
-        eventAndPayload.payload.action === "closed" &&
-        pullRequest.merged
-      ) {
+      } else if (event.payload.action === "closed" && pullRequest.merged) {
         return findAndRebasePullRequestOnSameBase({
           base: pullRequest.base,
           label,
@@ -269,8 +266,8 @@ const autorebase = async ({
       }
     } else if (
       pullRequest.labeledAndOpenedAndRebaseable &&
-      eventAndPayload.event === "pull_request_review" &&
-      eventAndPayload.payload.action === "submitted" &&
+      event.name === "pull_request_review" &&
+      event.payload.action === "submitted" &&
       pullRequest.mergeableState === "clean"
     ) {
       return merge({

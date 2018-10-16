@@ -6,7 +6,7 @@ const probot = serverless(app => {
   app.on("*", async context => {
     const { owner, repo } = context.repo();
     const action = await autorebase({
-      eventAndPayload: { event: context.event, payload: context.payload },
+      event: { name: context.name, payload: context.payload },
       octokit: context.github,
       options: { label: "autorebase" },
       owner,
