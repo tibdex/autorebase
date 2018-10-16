@@ -1,8 +1,8 @@
+import { serverless } from "@probot/serverless-lambda";
+
 import autorebase from "./autorebase";
 
-module.exports = app => {
-  app.log("App loaded");
-
+const probot = serverless(app => {
   app.on("*", async context => {
     const { owner, repo } = context.repo();
     const action = await autorebase({
@@ -14,4 +14,6 @@ module.exports = app => {
     });
     context.log(action);
   });
-};
+});
+
+export { probot };

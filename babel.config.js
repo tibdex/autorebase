@@ -14,7 +14,7 @@ module.exports = {
       presetEnv,
       {
         targets: {
-          node: env === "test" ? true : "6.11.2",
+          node: env === "test" ? true : "8.10.0",
         },
       },
     ],
