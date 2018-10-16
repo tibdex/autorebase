@@ -38,31 +38,29 @@ type Action =
 type Event =
   | {|
       name: "pull_request",
-      payload: {
-        action: "closed" | "opened" | "synchronize",
-        pull_request: PullRequestPayload,
-      },
-    |}
-  | {|
-      name: "pull_request",
-      payload: {
-        action: "labeled",
-        label: { name: LabelName },
-        pull_request: PullRequestPayload,
-      },
+      payload:
+        | {|
+            action: "closed" | "opened" | "synchronize",
+            pull_request: PullRequestPayload,
+          |}
+        | {|
+            action: "labeled",
+            label: { name: LabelName },
+            pull_request: PullRequestPayload,
+          |},
     |}
   | {|
       name: "pull_request_review",
-      payload: {
+      payload: {|
         action: "dismissed" | "edited" | "submitted",
         pull_request: PullRequestPayload,
-      },
+      |},
     |}
   | {|
       name: "status",
-      payload: {
+      payload: {|
         sha: Sha,
-      },
+      |},
     |};
 
 const merge = async ({ head, number, octokit, owner, repo }) => {
