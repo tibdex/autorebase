@@ -5,8 +5,7 @@ jobs:
       - image: circleci/node:10
     steps:
       - checkout
-      - run: yarn install
-      - run: yarn run build
+      - run: yarn install --frozen-lockfile
       - run: yarn run prettier --list-different
       - run: yarn run eslint
       - run: yarn flow check
@@ -22,12 +21,8 @@ jobs:
       - image: circleci/node:10
     steps:
       - checkout
-      - run: yarn install
-      - run: sudo yarn global add now --prefix /usr/local
-      - run: echo "{\"alias\":\"$NOW_ALIAS\"}" > now.json
-      - run: now --public --no-clipboard --token $NOW_TOKEN --env NODE_ENV=production --env APP_ID=$APP_ID --env LOG_LEVEL=$LOG_LEVEL --env WEBHOOK_SECRET=$WEBHOOK_SECRET --env PRIVATE_KEY=$PRIVATE_KEY --env SENTRY_DSN=$SENTRY_DSN
-      - run: now --token $NOW_TOKEN alias
-      - run: now --token $NOW_TOKEN rm autorebase --safe --yes
+      - run: yarn install --frozen-lockfile
+      - run: yarn serverless deploy
 
 workflows:
   version: 2
