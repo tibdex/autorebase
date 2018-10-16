@@ -77,7 +77,7 @@ If you're convinced that rebasing is the best option, you can easily [enforce it
 
 ### Autosquashing
 
-Autorebase has built-in [autosquashing](https://git-scm.com/docs/git-rebase#git-rebase---autosquash) support. It will come in handy to automatically fixup/squash these commits added on pull requests after a reviewer requests changes.
+Autorebase has built-in [autosquashing](https://git-scm.com/docs/git-rebase#git-rebase---autosquash) support. It will come in handy to automatically fixup/squash these commits added on pull requests after a reviewer requested changes.
 
 ## Why Not Clicking on the “Update Branch” Button Provided by GitHub Instead?
 
