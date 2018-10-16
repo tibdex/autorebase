@@ -84,28 +84,28 @@ const getPullRequestPayload = ({
   rebaseable: Boolean(labeledAndOpenedAndRebaseable),
 });
 
-const getApprovedReviewPullRequestEventAndPayload = ({
+const getApprovedReviewPullRequestEvent = ({
   label,
   pullRequest,
 }: {
   label: LabelName,
   pullRequest: PullRequestPartialInfo,
 }) => ({
-  event: "pull_request_review",
+  name: "pull_request_review",
   payload: {
     action: "submitted",
     pull_request: getPullRequestPayload({ label, pullRequest }),
   },
 });
 
-const getLabeledPullRequestEventAndPayload = ({
+const getLabeledPullRequestEvent = ({
   label,
   pullRequest,
 }: {
   label: LabelName,
   pullRequest: PullRequestPartialInfo,
 }) => ({
-  event: "pull_request",
+  name: "pull_request",
   payload: {
     action: "labeled",
     label: { name: label },
@@ -113,8 +113,8 @@ const getLabeledPullRequestEventAndPayload = ({
   },
 });
 
-const getMergedPullRequestEventAndPayload = (base: Reference) => ({
-  event: "pull_request",
+const getMergedPullRequestEvent = (base: Reference) => ({
+  name: "pull_request",
   payload: {
     action: "closed",
     pull_request: getPullRequestPayload({
@@ -123,8 +123,8 @@ const getMergedPullRequestEventAndPayload = (base: Reference) => ({
   },
 });
 
-const getStatusEventAndPayload = (sha: Sha) => ({
-  event: "status",
+const getStatusEvent = (sha: Sha) => ({
+  name: "status",
   payload: {
     sha,
   },
@@ -161,9 +161,9 @@ const protectBranch = async ({
 
 export {
   createStatus,
-  getApprovedReviewPullRequestEventAndPayload,
-  getLabeledPullRequestEventAndPayload,
-  getMergedPullRequestEventAndPayload,
-  getStatusEventAndPayload,
+  getApprovedReviewPullRequestEvent,
+  getLabeledPullRequestEvent,
+  getMergedPullRequestEvent,
+  getStatusEvent,
   protectBranch,
 };
