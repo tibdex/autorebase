@@ -5,16 +5,13 @@
 const presetEnv = require("@babel/preset-env");
 const presetFlow = require("@babel/preset-flow");
 
-// eslint-disable-next-line no-process-env
-const env = process.env.NODE_ENV;
-
 module.exports = {
   presets: [
     [
       presetEnv,
       {
         targets: {
-          node: env === "test" ? true : "8.10.0",
+          node: true,
         },
       },
     ],

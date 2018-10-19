@@ -1,46 +1,57 @@
 {
-  "description": "GitHub App to automatically rebase and merge pull requests",
-  "devDependencies": {
+  "dependencies": {
+    "@babel/cli": "^7.1.0",
     "@babel/core": "^7.1.0",
     "@babel/preset-env": "^7.1.0",
     "@babel/preset-flow": "^7.0.0",
-    "@probot/serverless-lambda": "^0.2.0",
+    "debug": "^4.0.1",
+    "github-rebase": "^0.3.1",
+    "probot": "^7.2.0",
+    "promise-retry": "^1.1.1",
+    "shared-github-internals": "^0.1.5"
+  },
+  "description": "GitHub App to automatically rebase and merge pull requests",
+  "devDependencies": {
     "babel-core": "^7.0.0-bridge",
     "babel-eslint": "^10.0.1",
     "babel-jest": "^23.6.0",
-    "babel-loader": "^8.0.4",
-    "debug": "^4.1.0",
-    "eslint": "^5.7.0",
+    "eslint": "^5.6.0",
     "eslint-config-prettier": "^3.0.1",
     "eslint-plugin-flowtype": "^3.0.0",
     "eslint-plugin-import": "^2.14.0",
     "eslint-plugin-security": "^1.4.0",
     "eslint-plugin-unicorn": "^6.0.1",
     "flow-bin": "^0.83.0",
+    "flow-copy-source": "^2.0.2",
     "flow-typed": "^2.5.1",
-    "github-rebase": "^0.3.1",
     "jest": "^23.6.0",
     "jest-junit": "^5.2.0",
+    "nodemon": "^1.18.4",
     "prettier": "^1.14.3",
-    "probot": "^7.3.1",
-    "promise-retry": "^1.1.1",
-    "serverless": "^1.32.0",
-    "serverless-webpack": "^5.2.0",
-    "shared-github-internals": "^0.1.5",
-    "string-replace-loader": "^2.1.1",
-    "uuid": "^3.3.2",
-    "webpack": "^4.20.2"
+    "smee-client": "^1.0.2",
+    "uuid": "^3.3.2"
   },
   "engines": {
-    "node": ">= 8.10.0"
+    "node": ">= 6.11.2"
   },
+  "main": "app",
   "name": "autorebase",
+  "nodemonConfig": {
+    "exec": "yarn build && yarn start",
+    "watch": [
+      ".env",
+      "src"
+    ]
+  },
   "private": true,
   "scripts": {
+    "build": "babel src --out-dir app",
+    "dev": "nodemon",
     "eslint": "eslint . --max-warnings 0",
     "flow": "flow",
     "flow-typed": "flow-typed",
     "prettier": "prettier \"**/*.{js,json,md}\"",
+    "start": "probot run .",
     "test": "jest"
   }
 }
