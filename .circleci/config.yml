@@ -10,15 +10,11 @@ jobs:
       - run: yarn run eslint
       - run: yarn run flow check
       - run: yarn run test --coverage
-      - run: yarn run serverless package
       - store_test_results:
           path: reports
       - store_artifacts:
           path: coverage/lcov-report
           destination: coverage
-      - store_artifacts:
-          path: .serverless
-          destination: serverless
 
   deploy:
     docker:
@@ -26,10 +22,11 @@ jobs:
     steps:
       - checkout
       - run: yarn install --frozen-lockfile
-      - run: yarn run serverless deploy
-      - store_artifacts:
-          path: .serverless
-          destination: serverless
+      - run: sudo yarn global add now --prefix /usr/local
+      - run: echo "{\"alias\":\"$NOW_ALIAS\"}" > now.json
+      - run: now --public --no-clipboard --token $NOW_TOKEN --env APP_ID=$APP_ID --env DEBUG=$DEBUG_ON_NOW --env LOG_LEVEL=$LOG_LEVEL_ON_NOW --env NODE_ENV=production --env PRIVATE_KEY=$PRIVATE_KEY --env SENTRY_DSN=$SENTRY_DSN --env WEBHOOK_SECRET=$WEBHOOK_SECRET
+      - run: now --token $NOW_TOKEN alias
+      - run: now --token $NOW_TOKEN rm autorebase --safe --yes
 
 workflows:
   version: 2

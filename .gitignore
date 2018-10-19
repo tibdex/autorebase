@@ -1,5 +1,5 @@
 /.env
-/.serverless/
+/app
 /coverage/
 /node_modules/
 /reports/
