@@ -1,111 +1,143 @@
-// @flow strict
-
-import type { Github } from "@octokit/rest";
+import * as Octokit from "@octokit/rest";
 import rebasePullRequest, { needAutosquashing } from "github-rebase";
 import {
-  type PullRequestNumber,
-  type RepoName,
-  type RepoOwner,
-  type Sha,
   deleteReference,
+  PullRequestNumber,
+  Reference,
+  RepoName,
+  RepoOwner,
+  Sha,
 } from "shared-github-internals/lib/git";
 
 import {
-  type LabelName,
-  type PullRequestPayload,
   debug,
   findAutorebaseablePullRequestMatchingSha,
   findOldestPullRequest,
   getPullRequestInfoWithKnownMergeableState,
+  LabelName,
+  PullRequestInfo,
+  PullRequestPayload,
   withLabelLock,
 } from "./utils";
 
 type Options = {
-  // Pull requests without this label will be ignored.
-  label: LabelName,
+  /**
+   * Pull requests without this label will be ignored.
+   */
+  label: LabelName;
 };
 
-type Action =
-  // When Autorebase tries to rebase a pull request that doesn't have the label anymore.
-  | {| number: PullRequestNumber, type: "abort" |}
-  | {| number: PullRequestNumber, type: "merge" |}
-  | {| number: PullRequestNumber, type: "rebase" |}
-  | {| type: "nop" |};
+/**
+ * When Autorebase tries to rebase a pull request that doesn't have the label anymore.
+ */
+type AbortAction = { pullRequestNumber: PullRequestNumber; type: "abort" };
+
+type MergeAction = { pullRequestNumber: PullRequestNumber; type: "merge" };
+
+type RebaseAction = { pullRequestNumber: PullRequestNumber; type: "rebase" };
+
+type NopAction = { type: "nop" };
+
+type Action = AbortAction | MergeAction | RebaseAction | NopAction;
 
 /**
  * See https://developer.github.com/webhooks/#events
  */
 type Event =
-  | {|
-      name: "pull_request",
+  | {
+      name: "pull_request";
       payload:
-        | {|
-            action: "closed" | "opened" | "synchronize",
-            pull_request: PullRequestPayload,
-          |}
-        | {|
-            action: "labeled",
-            label: { name: LabelName },
-            pull_request: PullRequestPayload,
-          |},
-    |}
-  | {|
-      name: "pull_request_review",
-      payload: {|
-        action: "dismissed" | "edited" | "submitted",
-        pull_request: PullRequestPayload,
-      |},
-    |}
-  | {|
-      name: "status",
-      payload: {|
-        sha: Sha,
-      |},
-    |};
+        | {
+            action: "closed" | "opened" | "synchronize";
+            pull_request: PullRequestPayload;
+          }
+        | {
+            action: "labeled";
+            label: { name: LabelName };
+            pull_request: PullRequestPayload;
+          };
+    }
+  | {
+      name: "pull_request_review";
+      payload: {
+        action: "dismissed" | "edited" | "submitted";
+        pull_request: PullRequestPayload;
+      };
+    }
+  | {
+      name: "status";
+      payload: {
+        sha: Sha;
+      };
+    };
 
-const merge = async ({ head, number, octokit, owner, repo }) => {
-  debug("merging", number);
+const merge = async ({
+  head,
+  octokit,
+  owner,
+  pullRequestNumber,
+  repo,
+}: {
+  head: Reference;
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
+}): Promise<MergeAction> => {
+  debug("merging", pullRequestNumber);
   await octokit.pullRequests.merge({
     merge_method: "rebase",
-    number,
+    number: pullRequestNumber,
     owner,
     repo,
   });
-  debug("merged", number);
+  debug("merged", pullRequestNumber);
   debug("deleting reference", head);
   await deleteReference({ octokit, owner, ref: head, repo });
   debug("reference deleted", head);
   return {
-    number,
+    pullRequestNumber,
     type: "merge",
   };
 };
 
-const rebase = async ({ label, number, octokit, owner, repo }) => {
-  debug("rebasing", number);
+const rebase = async ({
+  label,
+  octokit,
+  owner,
+  pullRequestNumber,
+  repo,
+}: {
+  label: LabelName;
+  pullRequestNumber: PullRequestNumber;
+  octokit: Octokit;
+  owner: RepoOwner;
+  repo: RepoName;
+}): Promise<AbortAction | RebaseAction> => {
+  debug("rebasing", pullRequestNumber);
   const rebased = await withLabelLock({
     async action() {
       await rebasePullRequest({
-        number,
         octokit,
         owner,
+        pullRequestNumber,
         repo,
       });
     },
     label,
-    number,
     octokit,
     owner,
+    pullRequestNumber,
     repo,
   });
 
   if (!rebased) {
-    debug("other process already rebasing, aborting", number);
-    return { number, type: "abort" };
+    debug("other process already rebasing, aborting", pullRequestNumber);
+    return { pullRequestNumber, type: "abort" };
   }
 
-  debug("rebased", number);
-  return { number, type: "rebase" };
+  debug("rebased", pullRequestNumber);
+  return { pullRequestNumber, type: "rebase" };
 };
 
 const findAndRebasePullRequestOnSameBase = async ({
@@ -114,7 +146,13 @@ const findAndRebasePullRequestOnSameBase = async ({
   octokit,
   owner,
   repo,
-}) => {
+}: {
+  base: Reference;
+  label: LabelName;
+  octokit: Octokit;
+  owner: RepoOwner;
+  repo: RepoName;
+}): Promise<AbortAction | RebaseAction | NopAction> => {
   debug("searching for pull request to rebase on same base", base);
   const pullRequest = await findOldestPullRequest({
     extraSearchQualifiers: `base:${base}`,
@@ -128,9 +166,9 @@ const findAndRebasePullRequestOnSameBase = async ({
   return pullRequest
     ? rebase({
         label,
-        number: pullRequest.number,
         octokit,
         owner,
+        pullRequestNumber: pullRequest.pullRequestNumber,
         repo,
       })
     : { type: "nop" };
@@ -142,29 +180,41 @@ const autorebasePullRequest = async ({
   owner,
   pullRequest,
   repo,
-}) => {
+}: {
+  label: LabelName;
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequest: PullRequestInfo;
+  repo: RepoName;
+}): Promise<Action> => {
   debug("autorebasing pull request", { pullRequest });
   const shouldBeAutosquashed = await needAutosquashing({
-    number: pullRequest.number,
     octokit,
     owner,
+    pullRequestNumber: pullRequest.pullRequestNumber,
     repo,
   });
   debug("should be autosquashed", {
-    number: pullRequest.number,
+    pullRequestNumber: pullRequest.pullRequestNumber,
     shouldBeAutosquashed,
   });
   const shouldBeRebased =
     shouldBeAutosquashed || pullRequest.mergeableState === "behind";
   if (shouldBeRebased) {
-    return rebase({ label, number: pullRequest.number, octokit, owner, repo });
+    return rebase({
+      label,
+      octokit,
+      owner,
+      pullRequestNumber: pullRequest.pullRequestNumber,
+      repo,
+    });
   }
   if (pullRequest.mergeableState === "clean") {
     return merge({
       head: pullRequest.head,
-      number: pullRequest.number,
       octokit,
       owner,
+      pullRequestNumber: pullRequest.pullRequestNumber,
       repo,
     });
   }
@@ -182,12 +232,12 @@ const autorebase = async ({
   owner,
   repo,
 }: {
-  _intercept?: () => Promise<void>,
-  event: Event,
-  octokit: Github,
-  options: Options,
-  owner: RepoOwner,
-  repo: RepoName,
+  _intercept?: () => Promise<void>;
+  event: Event;
+  octokit: Octokit;
+  options: Options;
+  owner: RepoOwner;
+  repo: RepoName;
 }): Promise<Action> => {
   const { label } = options;
   debug("starting", { label, name: event.name });
@@ -206,9 +256,9 @@ const autorebase = async ({
       if (pullRequest.mergeableState === "clean") {
         return merge({
           head: pullRequest.head,
-          number: pullRequest.number,
           octokit,
           owner,
+          pullRequestNumber: pullRequest.pullRequestNumber,
           repo,
         });
       } else if (pullRequest.mergeableState === "blocked") {
@@ -270,9 +320,9 @@ const autorebase = async ({
     ) {
       return merge({
         head: pullRequest.head,
-        number: pullRequest.number,
         octokit,
         owner,
+        pullRequestNumber: pullRequest.pullRequestNumber,
         repo,
       });
     }
@@ -281,6 +331,6 @@ const autorebase = async ({
   return { type: "nop" };
 };
 
-export type { Options };
+export { Event, Options };
 
 export default autorebase;
