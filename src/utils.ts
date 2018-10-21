@@ -1,19 +1,17 @@
-// @flow strict
+import * as assert from "assert";
 
-import assert from "assert";
-
-import type { Github } from "@octokit/rest";
-import createDebug from "debug";
-import promiseRetry from "promise-retry";
+import * as Octokit from "@octokit/rest";
+import * as createDebug from "debug";
 import {
-  type PullRequestNumber,
-  type Reference,
-  type RepoName,
-  type RepoOwner,
-  type Sha,
+  PullRequestNumber,
+  Reference,
+  RepoName,
+  RepoOwner,
+  Sha,
 } from "shared-github-internals/lib/git";
 
-import { name as packageName } from "../package";
+// tslint:disable-next-line:no-var-requires (otherwise we get the error TS2497).
+const promiseRetry = require("promise-retry");
 
 type LabelName = string;
 
@@ -29,27 +27,27 @@ type MergeableState =
   | "unstable";
 
 type PullRequestInfo = {
-  base: Reference,
-  head: Reference,
-  labeledAndOpenedAndRebaseable: boolean,
-  mergeableState: MergeableState,
-  merged: boolean,
-  number: PullRequestNumber,
-  sha: Sha,
+  base: Reference;
+  head: Reference;
+  labeledAndOpenedAndRebaseable: boolean;
+  mergeableState: MergeableState;
+  merged: boolean;
+  pullRequestNumber: PullRequestNumber;
+  sha: Sha;
 };
 
 type PullRequestPayload = {
-  base: { ref: Reference },
-  closed_at: null | string,
-  head: { ref: Reference, sha: Sha },
-  labels: Array<{ name: LabelName }>,
-  mergeable_state: MergeableState,
-  merged: boolean,
-  number: PullRequestNumber,
-  rebaseable: boolean,
+  base: { ref: Reference };
+  closed_at: null | string;
+  head: { ref: Reference; sha: Sha };
+  labels: Array<{ name: LabelName }>;
+  mergeable_state: MergeableState;
+  merged: boolean;
+  number: PullRequestNumber;
+  rebaseable: boolean;
 };
 
-const debug = createDebug(packageName);
+const debug = createDebug("autorebase");
 
 const getPullRequestInfo = ({
   label,
@@ -60,12 +58,12 @@ const getPullRequestInfo = ({
     labels,
     mergeable_state: mergeableState,
     merged,
-    number,
+    number: pullRequestNumber,
     rebaseable,
   },
 }: {
-  label: LabelName,
-  pullRequest: PullRequestPayload,
+  label: LabelName;
+  pullRequest: PullRequestPayload;
 }): PullRequestInfo => ({
   base,
   head,
@@ -75,7 +73,7 @@ const getPullRequestInfo = ({
     rebaseable,
   mergeableState,
   merged,
-  number,
+  pullRequestNumber,
   sha,
 });
 
@@ -84,39 +82,57 @@ const isMergeableStateKnown = ({
   mergeable_state: mergeableState,
 }: PullRequestPayload) => closedAt !== null || mergeableState !== "unknown";
 
-const checkKnownMergeableState = async ({ number, octokit, owner, repo }) => {
+const checkKnownMergeableState = async ({
+  octokit,
+  owner,
+  pullRequestNumber,
+  repo,
+}: {
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
+}): Promise<PullRequestPayload> => {
   const { data: pullRequest } = await octokit.pullRequests.get({
-    number,
+    number: pullRequestNumber,
     owner,
     repo,
   });
+  // @ts-ignore mergeable_state is missing in Octokit's type.
   const { closed_at: closedAt, mergeable_state: mergeableState } = pullRequest;
-  debug("mergeable state", { closedAt, mergeableState, number });
+  debug("mergeable state", { closedAt, mergeableState, pullRequestNumber });
+  // @ts-ignore mergeable_state is missing in Octokit's type.
   assert(isMergeableStateKnown(pullRequest));
+  // @ts-ignore our PullRequestPayload is simplified.
   return pullRequest;
 };
 
 const waitForKnownMergeableState = ({
-  number,
   octokit,
   owner,
+  pullRequestNumber,
   repo,
 }: {
-  number: PullRequestNumber,
-  octokit: Github,
-  owner: RepoOwner,
-  repo: RepoName,
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
 }): Promise<PullRequestPayload> =>
   promiseRetry(
-    async retry => {
+    async (retry: (error: any) => void) => {
       try {
-        return await checkKnownMergeableState({ number, octokit, owner, repo });
+        return await checkKnownMergeableState({
+          octokit,
+          owner,
+          pullRequestNumber,
+          repo,
+        });
       } catch (error) {
-        debug("retrying to know mergeable state", number);
+        debug("retrying to know mergeable state", pullRequestNumber);
         return retry(error);
       }
     },
-    { minTimeout: 500 }
+    { minTimeout: 500 },
   );
 
 const getPullRequestInfoWithKnownMergeableState = async ({
@@ -126,19 +142,19 @@ const getPullRequestInfoWithKnownMergeableState = async ({
   pullRequest,
   repo,
 }: {
-  label: LabelName,
-  octokit: Github,
-  owner: RepoOwner,
-  pullRequest: PullRequestPayload,
-  repo: RepoName,
+  label: LabelName;
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequest: PullRequestPayload;
+  repo: RepoName;
 }) => {
   if (isMergeableStateKnown(pullRequest)) {
     return getPullRequestInfo({ label, pullRequest });
   }
   const pullRequestWithKnownMergeableState = await waitForKnownMergeableState({
-    number: pullRequest.number,
     octokit,
     owner,
+    pullRequestNumber: pullRequest.number,
     repo,
   });
   return getPullRequestInfo({
@@ -147,8 +163,8 @@ const getPullRequestInfoWithKnownMergeableState = async ({
   });
 };
 
-const getPullRequestNumbers = response =>
-  response.data.items.map(({ number }) => number);
+const getPullRequestNumbers = (response: Octokit.AnyResponse) =>
+  response.data.items.map((item: any) => item.number);
 
 // Pagination is a legit use-case for using await in loops.
 // See https://github.com/octokit/rest.js#pagination
@@ -161,13 +177,13 @@ const findOldestPullRequest = async ({
   predicate,
   repo,
 }: {
-  extraSearchQualifiers: string,
-  label: LabelName,
-  octokit: Github,
-  owner: RepoOwner,
-  predicate: PullRequestInfo => boolean,
-  repo: RepoName,
-}) => {
+  extraSearchQualifiers: string;
+  label: LabelName;
+  octokit: Octokit;
+  owner: RepoOwner;
+  predicate: (pullRequestInfo: PullRequestInfo) => boolean;
+  repo: RepoName;
+}): Promise<PullRequestInfo | null> => {
   const query = `is:pr is:open label:"${label}" repo:${owner}/${repo} ${extraSearchQualifiers}`;
   debug("searching oldest matching pull request", { query });
 
@@ -184,17 +200,21 @@ const findOldestPullRequest = async ({
   // or when there is no more pages.
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const numbers = getPullRequestNumbers(response);
-    debug({ numbers });
-    const matchingPullRequest = await numbers.reduce(
-      async (promise, number) => {
-        debug({ number });
+    const pullRequestNumbers = getPullRequestNumbers(response);
+    debug({ pullRequestNumbers });
+    const initialPromise = Promise.resolve(null);
+    const matchingPullRequest = await pullRequestNumbers.reduce(
+      async (
+        promise: Promise<PullRequestInfo | null>,
+        pullRequestNumber: PullRequestNumber,
+      ) => {
+        debug({ pullRequestNumber });
         const result = await promise;
         if (result) {
           return result;
         }
         const { data } = await octokit.pullRequests.get({
-          number,
+          number: pullRequestNumber,
           owner,
           repo,
         });
@@ -203,13 +223,14 @@ const findOldestPullRequest = async ({
           label,
           octokit,
           owner,
+          // @ts-ignore our PullRequestPayload is simplified.
           pullRequest: data,
           repo,
         });
         debug({ pullRequest });
         return predicate(pullRequest) ? pullRequest : null;
       },
-      Promise.resolve()
+      initialPromise,
     );
     if (matchingPullRequest) {
       return matchingPullRequest;
@@ -231,11 +252,11 @@ const findAutorebaseablePullRequestMatchingSha = ({
   repo,
   sha,
 }: {
-  label: LabelName,
-  octokit: Github,
-  owner: RepoOwner,
-  repo: RepoName,
-  sha: Sha,
+  label: LabelName;
+  octokit: Octokit;
+  owner: RepoOwner;
+  repo: RepoName;
+  sha: Sha;
 }) =>
   findOldestPullRequest({
     extraSearchQualifiers: sha,
@@ -255,54 +276,56 @@ const findAutorebaseablePullRequestMatchingSha = ({
 const withLabelLock = async ({
   action,
   label,
-  number,
   octokit,
   owner,
+  pullRequestNumber,
   repo,
 }: {
-  action: () => Promise<void>,
-  label: LabelName,
-  number: PullRequestNumber,
-  octokit: Github,
-  owner: RepoOwner,
-  repo: RepoName,
+  action: () => Promise<void>;
+  label: LabelName;
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
 }) => {
   try {
-    debug("acquiring lock", number);
+    debug("acquiring lock", pullRequestNumber);
     await octokit.issues.removeLabel({
       name: label,
-      number,
+      number: pullRequestNumber,
       owner,
       repo,
     });
   } catch (error) {
-    debug("lock already acquired by another process", number);
+    debug("lock already acquired by another process", pullRequestNumber);
     return false;
   }
 
   try {
-    debug("lock acquired", number);
+    debug("lock acquired", pullRequestNumber);
     await action();
     return true;
   } finally {
-    debug("releasing lock", number);
+    debug("releasing lock", pullRequestNumber);
     await octokit.issues.addLabels({
       labels: [label],
-      number,
+      number: pullRequestNumber,
       owner,
       repo,
     });
-    debug("lock released", number);
+    debug("lock released", pullRequestNumber);
   }
 };
-
-export type { LabelName, MergeableState, PullRequestInfo, PullRequestPayload };
 
 export {
   debug,
   findAutorebaseablePullRequestMatchingSha,
   findOldestPullRequest,
   getPullRequestInfoWithKnownMergeableState,
+  LabelName,
+  MergeableState,
+  PullRequestInfo,
+  PullRequestPayload,
   waitForKnownMergeableState,
   withLabelLock,
 };

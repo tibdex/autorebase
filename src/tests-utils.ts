@@ -1,30 +1,27 @@
-// @flow strict
-
-import type { Github } from "@octokit/rest";
+import * as Octokit from "@octokit/rest";
 import {
-  type PullRequestNumber,
-  type Reference,
-  type RepoName,
-  type RepoOwner,
-  type Sha,
   fetchReferenceSha,
+  PullRequestNumber,
+  Reference,
+  RepoName,
+  RepoOwner,
+  Sha,
 } from "shared-github-internals/lib/git";
 
-import {
-  type LabelName,
-  type MergeableState,
-  type PullRequestPayload,
-} from "../src/utils";
+import { Event } from "./autorebase";
+import { LabelName, MergeableState, PullRequestPayload } from "./utils";
 
 type PullRequestPartialInfo = {
-  base?: Reference,
-  head?: Reference,
-  labeledAndOpenedAndRebaseable?: boolean,
-  mergeableState?: MergeableState,
-  merged?: boolean,
-  number?: PullRequestNumber,
-  sha?: Sha,
+  base?: Reference;
+  head?: Reference;
+  labeledAndOpenedAndRebaseable?: boolean;
+  mergeableState?: MergeableState;
+  merged?: boolean;
+  pullRequestNumber?: PullRequestNumber;
+  sha?: Sha;
 };
+
+type RemoveBranchProtection = () => Promise<void>;
 
 const createStatus = async ({
   error,
@@ -33,11 +30,11 @@ const createStatus = async ({
   ref,
   repo,
 }: {
-  error?: boolean,
-  octokit: Github,
-  owner: RepoOwner,
-  ref: Reference,
-  repo: RepoName,
+  error?: boolean;
+  octokit: Octokit;
+  owner: RepoOwner;
+  ref: Reference;
+  repo: RepoName;
 }) => {
   const sha = await fetchReferenceSha({
     octokit,
@@ -62,12 +59,12 @@ const getPullRequestPayload = ({
     labeledAndOpenedAndRebaseable,
     mergeableState,
     merged,
-    number,
+    pullRequestNumber,
     sha,
   },
 }: {
-  label?: LabelName,
-  pullRequest: PullRequestPartialInfo,
+  label?: LabelName;
+  pullRequest: PullRequestPartialInfo;
 }): PullRequestPayload => ({
   base: { ref: String(base) },
   closed_at: labeledAndOpenedAndRebaseable === true ? null : "some unused date",
@@ -80,7 +77,7 @@ const getPullRequestPayload = ({
   mergeable_state:
     typeof mergeableState === "string" ? mergeableState : "unknown",
   merged: labeledAndOpenedAndRebaseable === true ? false : Boolean(merged),
-  number: Number(number),
+  number: Number(pullRequestNumber),
   rebaseable: Boolean(labeledAndOpenedAndRebaseable),
 });
 
@@ -88,9 +85,9 @@ const getApprovedReviewPullRequestEvent = ({
   label,
   pullRequest,
 }: {
-  label: LabelName,
-  pullRequest: PullRequestPartialInfo,
-}) => ({
+  label: LabelName;
+  pullRequest: PullRequestPartialInfo;
+}): Event => ({
   name: "pull_request_review",
   payload: {
     action: "submitted",
@@ -102,9 +99,9 @@ const getLabeledPullRequestEvent = ({
   label,
   pullRequest,
 }: {
-  label: LabelName,
-  pullRequest: PullRequestPartialInfo,
-}) => ({
+  label: LabelName;
+  pullRequest: PullRequestPartialInfo;
+}): Event => ({
   name: "pull_request",
   payload: {
     action: "labeled",
@@ -113,7 +110,7 @@ const getLabeledPullRequestEvent = ({
   },
 });
 
-const getMergedPullRequestEvent = (base: Reference) => ({
+const getMergedPullRequestEvent = (base: Reference): Event => ({
   name: "pull_request",
   payload: {
     action: "closed",
@@ -123,7 +120,7 @@ const getMergedPullRequestEvent = (base: Reference) => ({
   },
 });
 
-const getStatusEvent = (sha: Sha) => ({
+const getStatusEvent = (sha: Sha): Event => ({
   name: "status",
   payload: {
     sha,
@@ -136,11 +133,11 @@ const protectBranch = async ({
   ref: branch,
   repo,
 }: {
-  octokit: Github,
-  owner: RepoOwner,
-  ref: Reference,
-  repo: RepoOwner,
-}) => {
+  octokit: Octokit;
+  owner: RepoOwner;
+  ref: Reference;
+  repo: RepoOwner;
+}): Promise<RemoveBranchProtection> => {
   await octokit.repos.updateBranchProtection({
     branch,
     enforce_admins: true,
@@ -166,4 +163,5 @@ export {
   getMergedPullRequestEvent,
   getStatusEvent,
   protectBranch,
+  RemoveBranchProtection,
 };

@@ -1,18 +1,21 @@
-// @flow strict
-
-import createDebug from "debug";
-import { deleteReference } from "shared-github-internals/lib/git";
+import * as Octokit from "@octokit/rest";
+import * as createDebug from "debug";
+import {
+  deleteReference,
+  PullRequestNumber,
+  RepoName,
+  RepoOwner,
+} from "shared-github-internals/lib/git";
 import { createTestContext } from "shared-github-internals/lib/tests/context";
 import {
   createPullRequest,
   createReferences,
+  DeleteReferences,
+  RefsDetails,
 } from "shared-github-internals/lib/tests/git";
-import generateUuid from "uuid/v4";
+import * as generateUuid from "uuid/v4";
 
-import { name as packageName } from "../package";
-import autorebase from "../src/autorebase";
-import { waitForKnownMergeableState } from "../src/utils";
-
+import autorebase from "./autorebase";
 import {
   createStatus,
   getApprovedReviewPullRequestEvent,
@@ -20,13 +23,18 @@ import {
   getMergedPullRequestEvent,
   getStatusEvent,
   protectBranch,
-} from "./utils";
+  RemoveBranchProtection,
+} from "./tests-utils";
+import { waitForKnownMergeableState } from "./utils";
 
-const debug = createDebug(`${packageName}-test`);
+const debug = createDebug("autorebase-test");
 
 const [initial, master1st] = ["initial", "master 1st"];
 
-const debuggableStep = async (name, asyncAction) => {
+const debuggableStep = async (
+  name: string,
+  asyncAction: () => Promise<any>,
+) => {
   debug(`[start] ${name}`);
   try {
     await asyncAction();
@@ -37,7 +45,9 @@ const debuggableStep = async (name, asyncAction) => {
   }
 };
 
-let octokit, owner, repo;
+let octokit: Octokit;
+let owner: RepoOwner;
+let repo: RepoName;
 
 beforeAll(() => {
   ({ octokit, owner, repo } = createTestContext());
@@ -88,7 +98,10 @@ describe("nominal behavior", () => {
     },
   };
 
-  let numberA, numberB, refsDetails, removeMasterProtection;
+  let pullRequestNumberA: PullRequestNumber;
+  let pullRequestNumberB: PullRequestNumber;
+  let refsDetails: RefsDetails;
+  let removeMasterProtection: RemoveBranchProtection;
 
   beforeAll(async () => {
     ({ refsDetails } = await createReferences({
@@ -105,9 +118,9 @@ describe("nominal behavior", () => {
       repo,
     });
 
-    [numberA, numberB] = await Promise.all(
+    [pullRequestNumberA, pullRequestNumberB] = await Promise.all(
       [refsDetails.featureA.ref, refsDetails.featureB.ref].map(async ref => {
-        const [number] = await Promise.all([
+        const [pullRequestNumber] = await Promise.all([
           createPullRequest({
             base: refsDetails.master.ref,
             head: ref,
@@ -119,20 +132,20 @@ describe("nominal behavior", () => {
         ]);
         await Promise.all([
           waitForKnownMergeableState({
-            number,
             octokit,
             owner,
+            pullRequestNumber,
             repo,
           }),
           octokit.issues.addLabels({
             labels: [label],
-            number,
+            number: pullRequestNumber,
             owner,
             repo,
           }),
         ]);
-        return number;
-      })
+        return pullRequestNumber;
+      }),
     );
   }, 25000);
 
@@ -161,7 +174,7 @@ describe("nominal behavior", () => {
             pullRequest: {
               labeledAndOpenedAndRebaseable: true,
               mergeableState: "clean",
-              number: numberA,
+              pullRequestNumber: pullRequestNumberA,
             },
           }),
           octokit,
@@ -169,16 +182,19 @@ describe("nominal behavior", () => {
           owner,
           repo,
         });
-        expect(result).toEqual({ number: numberA, type: "rebase" });
+        expect(result).toEqual({
+          pullRequestNumber: pullRequestNumberA,
+          type: "rebase",
+        });
       });
 
       await debuggableStep(
         "feature B rebased because of error status on feature A",
         async () => {
           await waitForKnownMergeableState({
-            number: numberA,
             octokit,
             owner,
+            pullRequestNumber: pullRequestNumberA,
             repo,
           });
           const featureASha = await createStatus({
@@ -195,8 +211,11 @@ describe("nominal behavior", () => {
             owner,
             repo,
           });
-          expect(result).toEqual({ number: numberB, type: "rebase" });
-        }
+          expect(result).toEqual({
+            pullRequestNumber: pullRequestNumberB,
+            type: "rebase",
+          });
+        },
       );
 
       await debuggableStep(
@@ -209,9 +228,9 @@ describe("nominal behavior", () => {
             repo,
           });
           await waitForKnownMergeableState({
-            number: numberA,
             octokit,
             owner,
+            pullRequestNumber: pullRequestNumberA,
             repo,
           });
           const result = await autorebase({
@@ -221,17 +240,20 @@ describe("nominal behavior", () => {
             owner,
             repo,
           });
-          expect(result).toEqual({ number: numberA, type: "merge" });
-        }
+          expect(result).toEqual({
+            pullRequestNumber: pullRequestNumberA,
+            type: "merge",
+          });
+        },
       );
 
       await debuggableStep(
         "feature B rebased after feature A merged",
         async () => {
           await waitForKnownMergeableState({
-            number: numberB,
             octokit,
             owner,
+            pullRequestNumber: pullRequestNumberB,
             repo,
           });
           const result = await autorebase({
@@ -241,17 +263,20 @@ describe("nominal behavior", () => {
             owner,
             repo,
           });
-          expect(result).toEqual({ number: numberB, type: "rebase" });
-        }
+          expect(result).toEqual({
+            pullRequestNumber: pullRequestNumberB,
+            type: "rebase",
+          });
+        },
       );
 
       await debuggableStep(
         "feature B merged after review approval (with successful status)",
         async () => {
           await waitForKnownMergeableState({
-            number: numberB,
             octokit,
             owner,
+            pullRequestNumber: pullRequestNumberB,
             repo,
           });
           await createStatus({
@@ -263,9 +288,9 @@ describe("nominal behavior", () => {
           const {
             mergeable_state: mergeableState,
           } = await waitForKnownMergeableState({
-            number: numberB,
             octokit,
             owner,
+            pullRequestNumber: pullRequestNumberB,
             repo,
           });
           const result = await autorebase({
@@ -275,7 +300,7 @@ describe("nominal behavior", () => {
                 head: refsDetails.featureB.ref,
                 labeledAndOpenedAndRebaseable: true,
                 mergeableState,
-                number: numberB,
+                pullRequestNumber: pullRequestNumberB,
               },
             }),
             octokit,
@@ -283,15 +308,18 @@ describe("nominal behavior", () => {
             owner,
             repo,
           });
-          expect(result).toEqual({ number: numberB, type: "merge" });
-        }
+          expect(result).toEqual({
+            pullRequestNumber: pullRequestNumberB,
+            type: "merge",
+          });
+        },
       );
 
       await debuggableStep("nothing to do after feature B merged", async () => {
         await waitForKnownMergeableState({
-          number: numberB,
           octokit,
           owner,
+          pullRequestNumber: pullRequestNumberB,
           repo,
         });
         const result = await autorebase({
@@ -304,7 +332,7 @@ describe("nominal behavior", () => {
         expect(result).toEqual({ type: "nop" });
       });
     },
-    60000
+    60000,
   );
 });
 
@@ -337,7 +365,9 @@ describe("rebasing label acts as a lock", () => {
     },
   };
 
-  let number, refsDetails, removeMasterProtection;
+  let pullRequestNumber: PullRequestNumber;
+  let refsDetails: RefsDetails;
+  let removeMasterProtection: RemoveBranchProtection;
 
   beforeAll(async () => {
     ({ refsDetails } = await createReferences({
@@ -354,7 +384,7 @@ describe("rebasing label acts as a lock", () => {
       repo,
     });
 
-    [number] = await Promise.all([
+    [pullRequestNumber] = await Promise.all([
       createPullRequest({
         base: refsDetails.master.ref,
         head: refsDetails.feature.ref,
@@ -372,14 +402,14 @@ describe("rebasing label acts as a lock", () => {
 
     await Promise.all([
       waitForKnownMergeableState({
-        number,
         octokit,
         owner,
+        pullRequestNumber,
         repo,
       }),
       octokit.issues.addLabels({
         labels: [label],
-        number,
+        number: pullRequestNumber,
         owner,
         repo,
       }),
@@ -405,7 +435,7 @@ describe("rebasing label acts as a lock", () => {
     "concurrent calls of Autorebase lead to only one rebase attempt",
     async () => {
       let bothReadyToRebase = false;
-      let resolveOther;
+      let resolveOther: () => void;
 
       const concurrentAutorebaseAttempts = await Promise.all(
         new Array(2)
@@ -423,7 +453,7 @@ describe("rebasing label acts as a lock", () => {
                 // We need to do that because removing a label on a pull request is not a perfectly atomic lock.
                 // Indeed, if two removal requests are made really close to one another (typically less than 10ms), GitHub will accept both of them.
                 octokit.pullRequests
-                  .get({ number, owner, repo })
+                  .get({ number: pullRequestNumber, owner, repo })
                   .then(resolveOther);
 
                 // Resolve this call immediately.
@@ -434,25 +464,25 @@ describe("rebasing label acts as a lock", () => {
                 pullRequest: {
                   labeledAndOpenedAndRebaseable: true,
                   mergeableState: "behind",
-                  number,
+                  pullRequestNumber,
                 },
               }),
               octokit,
               options,
               owner,
               repo,
-            })
+            }),
           )
-          .map(attemptRebase => attemptRebase())
+          .map(attemptRebase => attemptRebase()),
       );
 
       // Check that only one instance actually attempted to rebase the pull request.
       expect(concurrentAutorebaseAttempts).toContainEqual({
-        number,
+        pullRequestNumber,
         type: "abort",
       });
       expect(concurrentAutorebaseAttempts).toContainEqual({
-        number,
+        pullRequestNumber,
         type: "rebase",
       });
 
@@ -463,9 +493,9 @@ describe("rebasing label acts as a lock", () => {
         repo,
       });
       await waitForKnownMergeableState({
-        number,
         octokit,
         owner,
+        pullRequestNumber,
         repo,
       });
       const thirdAutorebase = await autorebase({
@@ -475,7 +505,7 @@ describe("rebasing label acts as a lock", () => {
         owner,
         repo,
       });
-      expect(thirdAutorebase).toEqual({ number, type: "merge" });
+      expect(thirdAutorebase).toEqual({ pullRequestNumber, type: "merge" });
 
       const fourthAutorebase = await autorebase({
         event: getMergedPullRequestEvent(refsDetails.master.ref),
@@ -486,6 +516,6 @@ describe("rebasing label acts as a lock", () => {
       });
       expect(fourthAutorebase).toEqual({ type: "nop" });
     },
-    40000
+    40000,
   );
 });

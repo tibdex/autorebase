@@ -1,7 +1,0 @@
-# Lint .eslintrc.js file
-!.*.js
-
-/app/
-/coverage/
-/flow-typed/npm/
-/node_modules/

@@ -6,10 +6,10 @@ jobs:
     steps:
       - checkout
       - run: yarn install --frozen-lockfile
-      - run: yarn run prettier --list-different
-      - run: yarn run eslint
-      - run: yarn run flow check
+      - run: yarn run build
       - run: yarn run test --coverage
+      - run: yarn run tslint
+      - run: yarn run prettier --list-different
       - store_test_results:
           path: reports
       - store_artifacts:
