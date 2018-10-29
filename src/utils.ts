@@ -166,9 +166,6 @@ const getPullRequestInfoWithKnownMergeableState = async ({
 const getPullRequestNumbers = (response: Octokit.AnyResponse) =>
   response.data.items.map((item: any) => item.number);
 
-// Pagination is a legit use-case for using await in loops.
-// See https://github.com/octokit/rest.js#pagination
-/* eslint-disable no-await-in-loop */
 const findOldestPullRequest = async ({
   extraSearchQualifiers,
   label,
@@ -190,7 +187,6 @@ const findOldestPullRequest = async ({
   // Use the search endpoint to be able to filter on labels.
   let response = await octokit.search.issues({
     order: "asc",
-    // eslint-disable-next-line id-length
     q: query,
     sort: "created",
   });
@@ -198,7 +194,6 @@ const findOldestPullRequest = async ({
   // Using a constant condition because the loop
   // exits as soon as a matching pull request is found
   // or when there is no more pages.
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const pullRequestNumbers = getPullRequestNumbers(response);
     debug({ pullRequestNumbers });
@@ -243,7 +238,6 @@ const findOldestPullRequest = async ({
     }
   }
 };
-/* eslint-enable no-await-in-loop */
 
 const findAutorebaseablePullRequestMatchingSha = ({
   label,
