@@ -10,7 +10,6 @@ import { createTestContext } from "shared-github-internals/lib/tests/context";
 import {
   createPullRequest,
   createReferences,
-  DeleteReferences,
   RefsDetails,
 } from "shared-github-internals/lib/tests/git";
 import * as generateUuid from "uuid/v4";
