@@ -24,7 +24,7 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: sudo yarn global add now --prefix /usr/local
       - run: echo "{\"alias\":\"$NOW_ALIAS\"}" > now.json
-      - run: now --public --no-clipboard --token $NOW_TOKEN --env APP_ID=$APP_ID --env DEBUG=$DEBUG_ON_NOW --env LOG_LEVEL=$LOG_LEVEL_ON_NOW --env NODE_ENV=production --env PRIVATE_KEY=$PRIVATE_KEY --env SENTRY_DSN=$SENTRY_DSN --env WEBHOOK_SECRET=$WEBHOOK_SECRET
+      - run: now --public --no-clipboard --no-verify --token $NOW_TOKEN --env APP_ID=$APP_ID --env DEBUG=$DEBUG_ON_NOW --env LOG_LEVEL=$LOG_LEVEL_ON_NOW --env NODE_ENV=production --env PRIVATE_KEY=$PRIVATE_KEY --env SENTRY_DSN=$SENTRY_DSN --env WEBHOOK_SECRET=$WEBHOOK_SECRET
       - run: now --token $NOW_TOKEN alias
       - run: now --token $NOW_TOKEN rm autorebase --safe --yes
 
