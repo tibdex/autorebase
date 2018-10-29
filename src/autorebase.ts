@@ -221,8 +221,6 @@ const autorebasePullRequest = async ({
   return { type: "nop" };
 };
 
-/* eslint-disable max-statements,max-lines-per-function */
-
 const autorebase = async ({
   // Should only be used in tests.
   _intercept = () => Promise.resolve(),
