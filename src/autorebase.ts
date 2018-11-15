@@ -115,29 +115,42 @@ const rebase = async ({
   repo: RepoName;
 }): Promise<AbortAction | RebaseAction> => {
   debug("rebasing", pullRequestNumber);
-  const rebased = await withLabelLock({
-    async action() {
-      await rebasePullRequest({
-        octokit,
-        owner,
-        pullRequestNumber,
-        repo,
-      });
-    },
-    label,
-    octokit,
-    owner,
-    pullRequestNumber,
-    repo,
-  });
 
-  if (!rebased) {
-    debug("other process already rebasing, aborting", pullRequestNumber);
-    return { pullRequestNumber, type: "abort" };
+  try {
+    const rebased = await withLabelLock({
+      async action() {
+        await rebasePullRequest({
+          octokit,
+          owner,
+          pullRequestNumber,
+          repo,
+        });
+      },
+      label,
+      octokit,
+      owner,
+      pullRequestNumber,
+      repo,
+    });
+
+    if (!rebased) {
+      debug("other process already rebasing, aborting", pullRequestNumber);
+      return { pullRequestNumber, type: "abort" };
+    }
+
+    debug("rebased", pullRequestNumber);
+    return { pullRequestNumber, type: "rebase" };
+  } catch (error) {
+    const message = "rebase failed";
+    debug(message, error);
+    await octokit.issues.createComment({
+      body: [`The rebase failed:`, "", "```", error.message, "```"].join("\n"),
+      number: pullRequestNumber,
+      owner,
+      repo,
+    });
+    throw new Error(message);
   }
-
-  debug("rebased", pullRequestNumber);
-  return { pullRequestNumber, type: "rebase" };
 };
 
 const findAndRebasePullRequestOnSameBase = async ({
