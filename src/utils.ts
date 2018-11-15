@@ -305,20 +305,17 @@ const withLabelLock = async ({
     return false;
   }
 
-  try {
-    debug("lock acquired", pullRequestNumber);
-    await action();
-    return true;
-  } finally {
-    debug("releasing lock", pullRequestNumber);
-    await octokit.issues.addLabels({
-      labels: [label],
-      number: pullRequestNumber,
-      owner,
-      repo,
-    });
-    debug("lock released", pullRequestNumber);
-  }
+  debug("lock acquired", pullRequestNumber);
+  await action();
+  debug("releasing lock", pullRequestNumber);
+  await octokit.issues.addLabels({
+    labels: [label],
+    number: pullRequestNumber,
+    owner,
+    repo,
+  });
+  debug("lock released", pullRequestNumber);
+  return true;
 };
 
 export {

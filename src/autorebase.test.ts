@@ -10,6 +10,7 @@ import { createTestContext } from "shared-github-internals/lib/tests/context";
 import {
   createPullRequest,
   createReferences,
+  DeleteReferences,
   RefsDetails,
 } from "shared-github-internals/lib/tests/git";
 import * as generateUuid from "uuid/v4";
@@ -28,7 +29,11 @@ import { waitForKnownMergeableState } from "./utils";
 
 const debug = createDebug("autorebase-test");
 
-const [initial, master1st] = ["initial", "master 1st"];
+const [initial, master1st, feature1st] = [
+  "initial",
+  "master 1st",
+  "feature1st",
+];
 
 const debuggableStep = async (
   name: string,
@@ -42,6 +47,24 @@ const debuggableStep = async (
     debug(`[failed] ${name}`);
     throw error;
   }
+};
+
+const getLabelNames = async (pullRequestNumber: PullRequestNumber) => {
+  const { data: labels } = await octokit.issues.getIssueLabels({
+    number: pullRequestNumber,
+    owner,
+    repo,
+  });
+  return labels.map(({ name }) => name);
+};
+
+const getLastIssueComment = async (pullRequestNumber: PullRequestNumber) => {
+  const { data: comments } = await octokit.issues.getComments({
+    number: pullRequestNumber,
+    owner,
+    repo,
+  });
+  return comments[comments.length - 1].body;
 };
 
 let octokit: Octokit;
@@ -339,8 +362,6 @@ describe("rebasing label acts as a lock", () => {
   const label = generateUuid();
   const options = { label };
 
-  const feature1st = "feature1st";
-
   const [initialCommit, master1stCommit, feature1stCommit] = [
     {
       lines: [initial, initial],
@@ -516,5 +537,105 @@ describe("rebasing label acts as a lock", () => {
       expect(fourthAutorebase).toEqual({ type: "nop" });
     },
     40000,
+  );
+});
+
+describe("rebase failed", () => {
+  const label = generateUuid();
+  const options = { label };
+
+  const [initialCommit, master1stCommit, feature1stCommit] = [
+    {
+      lines: [initial],
+      message: initial,
+    },
+    {
+      lines: [master1st],
+      message: master1st,
+    },
+    {
+      lines: [feature1st],
+      message: feature1st,
+    },
+  ];
+
+  const state = {
+    initialCommit,
+    refsCommits: {
+      feature: [feature1stCommit],
+      master: [master1stCommit],
+    },
+  };
+
+  let deleteReferences: DeleteReferences;
+  let pullRequestNumber: PullRequestNumber;
+  let refsDetails: RefsDetails;
+
+  beforeAll(async () => {
+    ({ deleteReferences, refsDetails } = await createReferences({
+      octokit,
+      owner,
+      repo,
+      state,
+    }));
+
+    pullRequestNumber = await createPullRequest({
+      base: refsDetails.master.ref,
+      head: refsDetails.feature.ref,
+      octokit,
+      owner,
+      repo,
+    });
+
+    await Promise.all([
+      waitForKnownMergeableState({
+        octokit,
+        owner,
+        pullRequestNumber,
+        repo,
+      }),
+      octokit.issues.addLabels({
+        labels: [label],
+        number: pullRequestNumber,
+        owner,
+        repo,
+      }),
+    ]);
+  }, 25000);
+
+  afterAll(async () => {
+    await Promise.all([
+      deleteReferences(),
+      octokit.issues.deleteLabel({ name: label, owner, repo }),
+    ]);
+  });
+
+  test(
+    "label removed and pull request commented",
+    async () => {
+      const labelsBefore = await getLabelNames(pullRequestNumber);
+      expect(labelsBefore).toContain(label);
+      await expect(
+        autorebase({
+          event: getLabeledPullRequestEvent({
+            label,
+            pullRequest: {
+              labeledAndOpenedAndRebaseable: true,
+              mergeableState: "behind",
+              pullRequestNumber,
+            },
+          }),
+          octokit,
+          options,
+          owner,
+          repo,
+        }),
+      ).rejects.toThrow(/rebase failed/);
+      const labelsAfter = await getLabelNames(pullRequestNumber);
+      expect(labelsAfter).not.toContain(label);
+      const comment = await getLastIssueComment(pullRequestNumber);
+      expect(comment).toMatch(new RegExp("The rebase failed"));
+    },
+    30000,
   );
 });
