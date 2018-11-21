@@ -7,7 +7,7 @@
 
 Autorebase aims to make the Rebase Workflow enjoyable and keep `master` always green. [Try it!](https://github.com/apps/autorebase)
 
-Autorebase is a GitHub App, based on [Probot](https://probot.github.io/), that automatically [rebase and merge](https://help.github.com/articles/about-merge-methods-on-github/#rebasing-and-merging-your-commits) pull requests.
+Autorebase is a GitHub App, based on [Probot](https://probot.github.io/), which automatically [rebases and merges](https://help.github.com/articles/about-merge-methods-on-github/#rebasing-and-merging-your-commits) pull requests.
 
 It integrates especially well in repositories with branch protection set up to enforce up-to-date status checks.
 
