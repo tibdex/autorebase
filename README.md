@@ -18,6 +18,18 @@ It integrates especially well in repositories with branch protection set up to e
 3.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the `autorebase` label to it](https://help.github.com/articles/creating-a-label/).
 4.  :sparkles: That's it! Pull requests with the `autorebase` label will then be rebased when their base branch moved forward ([`mergeable_state === "behind"`](https://developer.github.com/v4/enum/mergestatestatus/#behind)) and "rebased and merged" once all the branch protections are respected ([`mergeable_state === "clean"`](https://developer.github.com/v4/enum/mergestatestatus/#clean)).
 
+## Demo
+
+### Rebasing a pull request with out-of-date status checks
+
+ <img alt="Rebasing a pull request with out-of-date status checks" src="./assets/out-of-date.gif">
+
+---
+
+### Autosquashing a [suggested commit](https://help.github.com/articles/incorporating-feedback-in-your-pull-request/#applying-a-suggested-change)
+
+<img alt="Autosquashing a suggested commit" src="./assets/suggested-change.gif">
+
 # FAQ
 
 ## How Does It Work?
