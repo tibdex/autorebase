@@ -22,13 +22,19 @@ It integrates especially well in repositories with branch protection set up to e
 
 ### Rebasing a pull request with out-of-date status checks
 
- <img alt="Rebasing a pull request with out-of-date status checks" src="./assets/out-of-date.gif">
+![Rebasing a pull request with out-of-date status checks](./assets/out-of-date.gif)
+
+This pull request has two commits and targets the `master` branch. The `master` branch has a required status check that must be up to date before merging a pull request on it. After adding the `autorebase` label, Autorebase automatically rebases the pull request on top of `master`. The pull request's branch is now up to date with `master`. As soon as a new successful status check is added to the pull request's last commit, Autorebase merges the pull request.
 
 ---
 
-### Autosquashing a [suggested commit](https://help.github.com/articles/incorporating-feedback-in-your-pull-request/#applying-a-suggested-change)
+### Autosquashing a suggested commit
 
-<img alt="Autosquashing a suggested commit" src="./assets/suggested-change.gif">
+![Autosquashing a suggested commit](./assets/suggested-change.gif)
+
+Again, this pull request has two commits and targets the `master` branch. Here, a reviewer made a [suggested change](https://help.github.com/articles/incorporating-feedback-in-your-pull-request/#applying-a-suggested-change) on its first commit. We accept this suggestion and name the resulting commit "fixup! Addition". Where "Addition" is the subject of the first commit. After adding the `autorebase` label, Autorebase automatically rebases the pull request on top of `master`, [autosquashing](https://git-scm.com/docs/git-rebase#git-rebase---autosquash) the suggested commit with the first one. Autorebase will then merge the pull request. We can see that two commits (and not three!) have landed on `master` and that the diff of the "Addition" commit is the suggested one.
+
+_Note_: We could also have named the fixup commit with the first commit's entire or abbreviated SHA. Meaning that "fixup! 00fac8d" would have worked too.
 
 # FAQ
 
