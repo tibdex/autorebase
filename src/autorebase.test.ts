@@ -50,7 +50,7 @@ const debuggableStep = async (
 };
 
 const getLabelNames = async (pullRequestNumber: PullRequestNumber) => {
-  const { data: labels } = await octokit.issues.getIssueLabels({
+  const { data: labels } = await octokit.issues.listLabelsOnIssue({
     number: pullRequestNumber,
     owner,
     repo,
@@ -59,7 +59,7 @@ const getLabelNames = async (pullRequestNumber: PullRequestNumber) => {
 };
 
 const getLastIssueComment = async (pullRequestNumber: PullRequestNumber) => {
-  const { data: comments } = await octokit.issues.getComments({
+  const { data: comments } = await octokit.issues.listComments({
     number: pullRequestNumber,
     owner,
     repo,
@@ -186,19 +186,75 @@ describe("nominal behavior", () => {
     ]);
   });
 
-  test(
-    "full story",
-    async () => {
-      await debuggableStep("feature A clean but autosquashed", async () => {
+  test("full story", async () => {
+    await debuggableStep("feature A clean but autosquashed", async () => {
+      const result = await autorebase({
+        event: getLabeledPullRequestEvent({
+          label,
+          pullRequest: {
+            labeledAndOpenedAndRebaseable: true,
+            mergeableState: "clean",
+            pullRequestNumber: pullRequestNumberA,
+          },
+        }),
+        octokit,
+        options,
+        owner,
+        repo,
+      });
+      expect(result).toEqual({
+        pullRequestNumber: pullRequestNumberA,
+        type: "rebase",
+      });
+    });
+
+    await debuggableStep(
+      "feature B rebased because of error status on feature A",
+      async () => {
+        await waitForKnownMergeableState({
+          octokit,
+          owner,
+          pullRequestNumber: pullRequestNumberA,
+          repo,
+        });
+        const featureASha = await createStatus({
+          error: true,
+          octokit,
+          owner,
+          ref: refsDetails.featureA.ref,
+          repo,
+        });
         const result = await autorebase({
-          event: getLabeledPullRequestEvent({
-            label,
-            pullRequest: {
-              labeledAndOpenedAndRebaseable: true,
-              mergeableState: "clean",
-              pullRequestNumber: pullRequestNumberA,
-            },
-          }),
+          event: getStatusEvent(featureASha),
+          octokit,
+          options,
+          owner,
+          repo,
+        });
+        expect(result).toEqual({
+          pullRequestNumber: pullRequestNumberB,
+          type: "rebase",
+        });
+      },
+    );
+
+    await debuggableStep(
+      "feature A merged after successful status",
+      async () => {
+        const featureASha = await createStatus({
+          octokit,
+          owner,
+          ref: refsDetails.featureA.ref,
+          repo,
+        });
+        await waitForKnownMergeableState({
+          octokit,
+          owner,
+          pullRequestNumber: pullRequestNumberA,
+          repo,
+        });
+        const result = await autorebase({
+          event: getStatusEvent(featureASha),
           octokit,
           options,
           owner,
@@ -206,138 +262,14 @@ describe("nominal behavior", () => {
         });
         expect(result).toEqual({
           pullRequestNumber: pullRequestNumberA,
-          type: "rebase",
+          type: "merge",
         });
-      });
+      },
+    );
 
-      await debuggableStep(
-        "feature B rebased because of error status on feature A",
-        async () => {
-          await waitForKnownMergeableState({
-            octokit,
-            owner,
-            pullRequestNumber: pullRequestNumberA,
-            repo,
-          });
-          const featureASha = await createStatus({
-            error: true,
-            octokit,
-            owner,
-            ref: refsDetails.featureA.ref,
-            repo,
-          });
-          const result = await autorebase({
-            event: getStatusEvent(featureASha),
-            octokit,
-            options,
-            owner,
-            repo,
-          });
-          expect(result).toEqual({
-            pullRequestNumber: pullRequestNumberB,
-            type: "rebase",
-          });
-        },
-      );
-
-      await debuggableStep(
-        "feature A merged after successful status",
-        async () => {
-          const featureASha = await createStatus({
-            octokit,
-            owner,
-            ref: refsDetails.featureA.ref,
-            repo,
-          });
-          await waitForKnownMergeableState({
-            octokit,
-            owner,
-            pullRequestNumber: pullRequestNumberA,
-            repo,
-          });
-          const result = await autorebase({
-            event: getStatusEvent(featureASha),
-            octokit,
-            options,
-            owner,
-            repo,
-          });
-          expect(result).toEqual({
-            pullRequestNumber: pullRequestNumberA,
-            type: "merge",
-          });
-        },
-      );
-
-      await debuggableStep(
-        "feature B rebased after feature A merged",
-        async () => {
-          await waitForKnownMergeableState({
-            octokit,
-            owner,
-            pullRequestNumber: pullRequestNumberB,
-            repo,
-          });
-          const result = await autorebase({
-            event: getMergedPullRequestEvent(refsDetails.master.ref),
-            octokit,
-            options,
-            owner,
-            repo,
-          });
-          expect(result).toEqual({
-            pullRequestNumber: pullRequestNumberB,
-            type: "rebase",
-          });
-        },
-      );
-
-      await debuggableStep(
-        "feature B merged after review approval (with successful status)",
-        async () => {
-          await waitForKnownMergeableState({
-            octokit,
-            owner,
-            pullRequestNumber: pullRequestNumberB,
-            repo,
-          });
-          await createStatus({
-            octokit,
-            owner,
-            ref: refsDetails.featureB.ref,
-            repo,
-          });
-          const {
-            mergeable_state: mergeableState,
-          } = await waitForKnownMergeableState({
-            octokit,
-            owner,
-            pullRequestNumber: pullRequestNumberB,
-            repo,
-          });
-          const result = await autorebase({
-            event: getApprovedReviewPullRequestEvent({
-              label,
-              pullRequest: {
-                head: refsDetails.featureB.ref,
-                labeledAndOpenedAndRebaseable: true,
-                mergeableState,
-                pullRequestNumber: pullRequestNumberB,
-              },
-            }),
-            octokit,
-            options,
-            owner,
-            repo,
-          });
-          expect(result).toEqual({
-            pullRequestNumber: pullRequestNumberB,
-            type: "merge",
-          });
-        },
-      );
-
-      await debuggableStep("nothing to do after feature B merged", async () => {
+    await debuggableStep(
+      "feature B rebased after feature A merged",
+      async () => {
         await waitForKnownMergeableState({
           octokit,
           owner,
@@ -351,11 +283,75 @@ describe("nominal behavior", () => {
           owner,
           repo,
         });
-        expect(result).toEqual({ type: "nop" });
+        expect(result).toEqual({
+          pullRequestNumber: pullRequestNumberB,
+          type: "rebase",
+        });
+      },
+    );
+
+    await debuggableStep(
+      "feature B merged after review approval (with successful status)",
+      async () => {
+        await waitForKnownMergeableState({
+          octokit,
+          owner,
+          pullRequestNumber: pullRequestNumberB,
+          repo,
+        });
+        await createStatus({
+          octokit,
+          owner,
+          ref: refsDetails.featureB.ref,
+          repo,
+        });
+        const {
+          mergeable_state: mergeableState,
+        } = await waitForKnownMergeableState({
+          octokit,
+          owner,
+          pullRequestNumber: pullRequestNumberB,
+          repo,
+        });
+        const result = await autorebase({
+          event: getApprovedReviewPullRequestEvent({
+            label,
+            pullRequest: {
+              head: refsDetails.featureB.ref,
+              labeledAndOpenedAndRebaseable: true,
+              mergeableState,
+              pullRequestNumber: pullRequestNumberB,
+            },
+          }),
+          octokit,
+          options,
+          owner,
+          repo,
+        });
+        expect(result).toEqual({
+          pullRequestNumber: pullRequestNumberB,
+          type: "merge",
+        });
+      },
+    );
+
+    await debuggableStep("nothing to do after feature B merged", async () => {
+      await waitForKnownMergeableState({
+        octokit,
+        owner,
+        pullRequestNumber: pullRequestNumberB,
+        repo,
       });
-    },
-    60000,
-  );
+      const result = await autorebase({
+        event: getMergedPullRequestEvent(refsDetails.master.ref),
+        octokit,
+        options,
+        owner,
+        repo,
+      });
+      expect(result).toEqual({ type: "nop" });
+    });
+  }, 60000);
 });
 
 describe("rebasing label acts as a lock", () => {
@@ -451,93 +447,89 @@ describe("rebasing label acts as a lock", () => {
     ]);
   });
 
-  test(
-    "concurrent calls of Autorebase lead to only one rebase attempt",
-    async () => {
-      let bothReadyToRebase = false;
-      let resolveOther: () => void;
+  test("concurrent calls of Autorebase lead to only one rebase attempt", async () => {
+    let bothReadyToRebase = false;
+    let resolveOther: () => void;
 
-      const concurrentAutorebaseAttempts = await Promise.all(
-        new Array(2)
-          .fill(() =>
-            autorebase({
-              _intercept() {
-                if (!bothReadyToRebase) {
-                  bothReadyToRebase = true;
-                  return new Promise(resolve => {
-                    resolveOther = resolve;
-                  });
-                }
+    const concurrentAutorebaseAttempts = await Promise.all(
+      new Array(2)
+        .fill(() =>
+          autorebase({
+            _intercept() {
+              if (!bothReadyToRebase) {
+                bothReadyToRebase = true;
+                return new Promise(resolve => {
+                  resolveOther = resolve;
+                });
+              }
 
-                // Wait for a request to be made to GitHub before resolving the other call.
-                // We need to do that because removing a label on a pull request is not a perfectly atomic lock.
-                // Indeed, if two removal requests are made really close to one another (typically less than 10ms), GitHub will accept both of them.
-                octokit.pullRequests
-                  .get({ number: pullRequestNumber, owner, repo })
-                  .then(resolveOther);
+              // Wait for a request to be made to GitHub before resolving the other call.
+              // We need to do that because removing a label on a pull request is not a perfectly atomic lock.
+              // Indeed, if two removal requests are made really close to one another (typically less than 10ms), GitHub will accept both of them.
+              octokit.pullRequests
+                .get({ number: pullRequestNumber, owner, repo })
+                .then(resolveOther);
 
-                // Resolve this call immediately.
-                return Promise.resolve();
+              // Resolve this call immediately.
+              return Promise.resolve();
+            },
+            event: getLabeledPullRequestEvent({
+              label,
+              pullRequest: {
+                labeledAndOpenedAndRebaseable: true,
+                mergeableState: "behind",
+                pullRequestNumber,
               },
-              event: getLabeledPullRequestEvent({
-                label,
-                pullRequest: {
-                  labeledAndOpenedAndRebaseable: true,
-                  mergeableState: "behind",
-                  pullRequestNumber,
-                },
-              }),
-              octokit,
-              options,
-              owner,
-              repo,
             }),
-          )
-          .map(attemptRebase => attemptRebase()),
-      );
+            octokit,
+            options,
+            owner,
+            repo,
+          }),
+        )
+        .map(attemptRebase => attemptRebase()),
+    );
 
-      // Check that only one instance actually attempted to rebase the pull request.
-      expect(concurrentAutorebaseAttempts).toContainEqual({
-        pullRequestNumber,
-        type: "abort",
-      });
-      expect(concurrentAutorebaseAttempts).toContainEqual({
-        pullRequestNumber,
-        type: "rebase",
-      });
+    // Check that only one instance actually attempted to rebase the pull request.
+    expect(concurrentAutorebaseAttempts).toContainEqual({
+      pullRequestNumber,
+      type: "abort",
+    });
+    expect(concurrentAutorebaseAttempts).toContainEqual({
+      pullRequestNumber,
+      type: "rebase",
+    });
 
-      const newFeatureSha = await createStatus({
-        octokit,
-        owner,
-        ref: refsDetails.feature.ref,
-        repo,
-      });
-      await waitForKnownMergeableState({
-        octokit,
-        owner,
-        pullRequestNumber,
-        repo,
-      });
-      const thirdAutorebase = await autorebase({
-        event: getStatusEvent(newFeatureSha),
-        octokit,
-        options,
-        owner,
-        repo,
-      });
-      expect(thirdAutorebase).toEqual({ pullRequestNumber, type: "merge" });
+    const newFeatureSha = await createStatus({
+      octokit,
+      owner,
+      ref: refsDetails.feature.ref,
+      repo,
+    });
+    await waitForKnownMergeableState({
+      octokit,
+      owner,
+      pullRequestNumber,
+      repo,
+    });
+    const thirdAutorebase = await autorebase({
+      event: getStatusEvent(newFeatureSha),
+      octokit,
+      options,
+      owner,
+      repo,
+    });
+    expect(thirdAutorebase).toEqual({ pullRequestNumber, type: "merge" });
 
-      const fourthAutorebase = await autorebase({
-        event: getMergedPullRequestEvent(refsDetails.master.ref),
-        octokit,
-        options,
-        owner,
-        repo,
-      });
-      expect(fourthAutorebase).toEqual({ type: "nop" });
-    },
-    40000,
-  );
+    const fourthAutorebase = await autorebase({
+      event: getMergedPullRequestEvent(refsDetails.master.ref),
+      octokit,
+      options,
+      owner,
+      repo,
+    });
+    expect(fourthAutorebase).toEqual({ type: "nop" });
+  }, 40000);
 });
 
 describe("rebase failed", () => {
@@ -610,32 +602,28 @@ describe("rebase failed", () => {
     ]);
   });
 
-  test(
-    "label removed and pull request commented",
-    async () => {
-      const labelsBefore = await getLabelNames(pullRequestNumber);
-      expect(labelsBefore).toContain(label);
-      await expect(
-        autorebase({
-          event: getLabeledPullRequestEvent({
-            label,
-            pullRequest: {
-              labeledAndOpenedAndRebaseable: true,
-              mergeableState: "behind",
-              pullRequestNumber,
-            },
-          }),
-          octokit,
-          options,
-          owner,
-          repo,
+  test("label removed and pull request commented", async () => {
+    const labelsBefore = await getLabelNames(pullRequestNumber);
+    expect(labelsBefore).toContain(label);
+    await expect(
+      autorebase({
+        event: getLabeledPullRequestEvent({
+          label,
+          pullRequest: {
+            labeledAndOpenedAndRebaseable: true,
+            mergeableState: "behind",
+            pullRequestNumber,
+          },
         }),
-      ).rejects.toThrow(/rebase failed/);
-      const labelsAfter = await getLabelNames(pullRequestNumber);
-      expect(labelsAfter).not.toContain(label);
-      const comment = await getLastIssueComment(pullRequestNumber);
-      expect(comment).toMatch(new RegExp("The rebase failed"));
-    },
-    30000,
-  );
+        octokit,
+        options,
+        owner,
+        repo,
+      }),
+    ).rejects.toThrow(/rebase failed/);
+    const labelsAfter = await getLabelNames(pullRequestNumber);
+    expect(labelsAfter).not.toContain(label);
+    const comment = await getLastIssueComment(pullRequestNumber);
+    expect(comment).toMatch(new RegExp("The rebase failed"));
+  }, 30000);
 });

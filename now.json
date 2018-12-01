@@ -1,0 +1,13 @@
+{
+  "builds": [{ "src": "app/index.js", "use": "@now/node" }],
+  "env": {
+    "APP_ID": "@autorebase-app-id",
+    "DEBUG": "@autorebase-debug",
+    "LOG_LEVEL": "@autorebase-log-level",
+    "PRIVATE_KEY": "@autorebase-base64-encoded-private-key",
+    "SENTRY_DSN": "@autorebase-sentry-dsn",
+    "WEBHOOK_SECRET": "@autorebase-webhook-secret"
+  },
+  "routes": [{ "src": "/", "dest": "app/index.js" }],
+  "version": 2
+}
