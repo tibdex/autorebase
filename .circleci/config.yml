@@ -19,12 +19,13 @@ jobs:
   deploy:
     docker:
       - image: circleci/node:8
+    working_directory: ~/autorebase
     steps:
       - checkout
       - run: yarn install --frozen-lockfile
       - run: sudo yarn global add now --prefix /usr/local
       - run: yarn build
-      - run: now --name autorebase --no-clipboard --token $NOW_TOKEN
+      - run: now --no-clipboard --token $NOW_TOKEN
       - run: now --token $NOW_TOKEN alias $NOW_ALIAS
       - run: now --token $NOW_TOKEN rm $NOW_ALIAS --safe --yes
 
