@@ -27,7 +27,7 @@ jobs:
       - run: yarn build
       - run: now --no-clipboard --token $NOW_TOKEN
       - run: now --token $NOW_TOKEN alias $NOW_ALIAS
-      - run: now --token $NOW_TOKEN rm $NOW_ALIAS --safe --yes
+      - run: now --token $NOW_TOKEN rm autorebase --safe --yes
 
 workflows:
   version: 2
