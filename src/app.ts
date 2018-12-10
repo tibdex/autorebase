@@ -5,7 +5,7 @@ import autorebase from "./autorebase";
 const appFn = (app: Application) => {
   app.log("App loaded");
 
-  app.on("*", async context => {
+  app.on(["pull_request", "pull_request_review", "status"], async context => {
     const { owner, repo } = context.repo();
     const action = await autorebase({
       // @ts-ignore The event is of the good type because Autorebase only subscribes to a subset of webhooks.
