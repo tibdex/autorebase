@@ -1,27 +1,116 @@
 import * as Octokit from "@octokit/rest";
+import * as envalid from "envalid";
+import { Application, createProbot } from "probot";
+import { createWebhookProxy } from "probot/lib/webhook-proxy";
 import {
+  deleteReference,
   fetchReferenceSha,
-  PullRequestNumber,
   Reference,
   RepoName,
   RepoOwner,
-  Sha,
 } from "shared-github-internals/lib/git";
 
-import { Event } from "./autorebase";
-import { LabelName, MergeableState, PullRequestPayload } from "./utils";
+// tslint:disable-next-line:no-var-requires
+const isBase64 = require("is-base64");
 
-type PullRequestPartialInfo = {
-  base?: Reference;
-  head?: Reference;
-  labeledAndOpenedAndRebaseable?: boolean;
-  mergeableState?: MergeableState;
-  merged?: boolean;
-  pullRequestNumber?: PullRequestNumber;
-  sha?: Sha;
+type DeleteProtectedBranch = () => Promise<void>;
+
+type StopServer = () => void;
+
+type StartServer = () => StopServer;
+
+type TestContext = {
+  octokit: Octokit;
+  owner: RepoOwner;
+  repo: RepoName;
+  startServer: StartServer;
 };
 
-type RemoveBranchProtection = () => Promise<void>;
+const nop = () => {
+  // Do nothing.
+};
+
+const createTestContext = async (
+  applicationFunction: (app: Application) => void,
+): Promise<TestContext> => {
+  const env = envalid.cleanEnv(
+    // eslint-disable-next-line no-process-env
+    process.env,
+    {
+      TEST_APP_ID: envalid.num({
+        desc:
+          "The ID of the GitHub App used during tests." +
+          " It must have at least the same permissions than the Autorebase GitHub App.",
+      }),
+      TEST_APP_PRIVATE_KEY: envalid.makeValidator(str => {
+        const privateKey = isBase64(str)
+          ? Buffer.from(str, "base64").toString("utf8")
+          : str;
+        if (
+          /-----BEGIN RSA PRIVATE KEY-----[\s\S]+-----END RSA PRIVATE KEY-----/m.test(
+            privateKey,
+          )
+        ) {
+          return privateKey;
+        }
+        throw new Error("invalid GitHub App RSA private key");
+      })({
+        docs:
+          "https://developer.github.com/apps/building-integrations/setting-up-and-registering-github-apps/registering-github-apps/#generating-a-private-key",
+      }),
+      TEST_INSTALLATION_ID: envalid.num({
+        desc:
+          'Can be found in the "Installed GitHub Apps" section of the developer settings',
+      }),
+      TEST_REPOSITORY_NAME: envalid.str({
+        desc: "Name of the repository against which the tests will be run",
+      }),
+      TEST_REPOSITORY_OWNER: envalid.str({
+        desc: "Owner of the repository against which the tests will be run.",
+      }),
+      TEST_SMEE_URL: envalid.url({
+        desc: "The smee URL used as the webhook URL of the test APP.",
+      }),
+      TEST_WEBHOOK_SECRET: envalid.str({
+        desc: "The webhook secret used by the test App.",
+      }),
+    },
+    { strict: true },
+  );
+
+  const repo = env.TEST_REPOSITORY_NAME;
+  const owner = env.TEST_REPOSITORY_OWNER;
+
+  const probot = createProbot({
+    cert: env.TEST_APP_PRIVATE_KEY as string,
+    id: env.TEST_APP_ID,
+    secret: env.TEST_WEBHOOK_SECRET,
+  });
+  const app = probot.load(applicationFunction);
+  // @ts-ignore
+  const octokit: Octokit = await app.auth(env.TEST_INSTALLATION_ID);
+
+  const startServer: StartServer = () => {
+    const server = probot.server.listen(0);
+    const { port } = server.address() as { port: number };
+    const smeeEvents = createWebhookProxy({
+      logger: {
+        error: nop,
+        info: nop,
+        warn: nop,
+      },
+      path: "/",
+      port,
+      url: env.TEST_SMEE_URL,
+    });
+    return () => {
+      smeeEvents.close();
+      server.close();
+    };
+  };
+
+  return { octokit, owner, repo, startServer };
+};
 
 const createStatus = async ({
   error,
@@ -51,82 +140,6 @@ const createStatus = async ({
   return sha;
 };
 
-const getPullRequestPayload = ({
-  label,
-  pullRequest: {
-    base,
-    head,
-    labeledAndOpenedAndRebaseable,
-    mergeableState,
-    merged,
-    pullRequestNumber,
-    sha,
-  },
-}: {
-  label?: LabelName;
-  pullRequest: PullRequestPartialInfo;
-}): PullRequestPayload => ({
-  base: { ref: String(base) },
-  closed_at: labeledAndOpenedAndRebaseable === true ? null : "some unused date",
-  head: {
-    ref: String(head),
-    sha: String(sha),
-  },
-  labels:
-    labeledAndOpenedAndRebaseable === true ? [{ name: String(label) }] : [],
-  mergeable_state:
-    typeof mergeableState === "string" ? mergeableState : "unknown",
-  merged: labeledAndOpenedAndRebaseable === true ? false : Boolean(merged),
-  number: Number(pullRequestNumber),
-  rebaseable: Boolean(labeledAndOpenedAndRebaseable),
-});
-
-const getApprovedReviewPullRequestEvent = ({
-  label,
-  pullRequest,
-}: {
-  label: LabelName;
-  pullRequest: PullRequestPartialInfo;
-}): Event => ({
-  name: "pull_request_review",
-  payload: {
-    action: "submitted",
-    pull_request: getPullRequestPayload({ label, pullRequest }),
-  },
-});
-
-const getLabeledPullRequestEvent = ({
-  label,
-  pullRequest,
-}: {
-  label: LabelName;
-  pullRequest: PullRequestPartialInfo;
-}): Event => ({
-  name: "pull_request",
-  payload: {
-    action: "labeled",
-    label: { name: label },
-    pull_request: getPullRequestPayload({ label, pullRequest }),
-  },
-});
-
-const getMergedPullRequestEvent = (base: Reference): Event => ({
-  name: "pull_request",
-  payload: {
-    action: "closed",
-    pull_request: getPullRequestPayload({
-      pullRequest: { base, labeledAndOpenedAndRebaseable: false, merged: true },
-    }),
-  },
-});
-
-const getStatusEvent = (sha: Sha): Event => ({
-  name: "status",
-  payload: {
-    sha,
-  },
-});
-
 const protectBranch = async ({
   octokit,
   owner,
@@ -137,7 +150,7 @@ const protectBranch = async ({
   owner: RepoOwner;
   ref: Reference;
   repo: RepoOwner;
-}): Promise<RemoveBranchProtection> => {
+}): Promise<DeleteProtectedBranch> => {
   await octokit.repos.updateBranchProtection({
     branch,
     enforce_admins: true,
@@ -153,15 +166,45 @@ const protectBranch = async ({
       owner,
       repo,
     });
+    await deleteReference({
+      octokit,
+      owner,
+      ref: branch,
+      repo,
+    });
   };
+};
+
+type Handler<T> = (arg: T) => Promise<void>;
+
+const waitForMockedHandlerCalls = <T>({
+  handler,
+  implementations,
+}: {
+  handler: Handler<T> & jest.Mock;
+  implementations: Array<Handler<T>>;
+}): Promise<void> => {
+  const initialMock: jest.Mock = handler;
+  return new Promise(resolve => {
+    implementations.reduce(
+      (mock, implementation, index) =>
+        mock.mockImplementationOnce(async arg => {
+          await implementation(arg);
+          if (index === implementations.length - 1) {
+            resolve();
+          }
+        }),
+      initialMock,
+    );
+  });
 };
 
 export {
   createStatus,
-  getApprovedReviewPullRequestEvent,
-  getLabeledPullRequestEvent,
-  getMergedPullRequestEvent,
-  getStatusEvent,
+  createTestContext,
+  DeleteProtectedBranch,
   protectBranch,
-  RemoveBranchProtection,
+  StartServer,
+  StopServer,
+  waitForMockedHandlerCalls,
 };

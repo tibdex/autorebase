@@ -3,13 +3,14 @@
 module.exports = {
   coverageThreshold: {
     global: {
-      branches: 80,
-      functions: 100,
-      lines: 90,
-      statements: 90,
+      branches: 85,
+      functions: 95,
+      lines: 95,
+      statements: 95,
     },
   },
   preset: "ts-jest",
   reporters: ["default", ["jest-junit", { output: "./reports/junit.xml" }]],
   testEnvironment: "node",
+  testRunner: "jest-circus/runner",
 };

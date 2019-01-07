@@ -1,23 +1,51 @@
 import { Application } from "probot";
 
-import autorebase from "./autorebase";
+import { Action, autorebase, Event } from "./autorebase";
+import { LabelName } from "./utils";
 
-const appFn = (app: Application) => {
+type ActionHandler = (action: Action) => Promise<void>;
+
+type EventHandler = (event: Event) => Promise<void>;
+
+type Options = {
+  handleAction: ActionHandler;
+  handleEvent: EventHandler;
+  /**
+   * Pull requests without this label will be ignored.
+   */
+  label: LabelName;
+};
+
+const createApplicationFunction = (options: Options) => (app: Application) => {
   app.log("App loaded");
 
   app.on(["pull_request", "pull_request_review", "status"], async context => {
     const { owner, repo } = context.repo();
-    const action = await autorebase({
-      // @ts-ignore The event is of the good type because Autorebase only subscribes to a subset of webhooks.
-      event: { name: context.name, payload: context.payload },
-      // @ts-ignore The value is the good one even if the type doesn't match.
-      octokit: context.github,
-      options: { label: "autorebase" },
-      owner,
-      repo,
-    });
-    context.log(action);
+
+    // @ts-ignore The event is of the good type because Autorebase only subscribes to a subset of webhooks.
+    const event: Event = { name: context.name, payload: context.payload };
+    await options.handleEvent(event);
+
+    let action;
+    try {
+      action = await autorebase({
+        event,
+        label: options.label,
+        // @ts-ignore The value is the good one even if the type doesn't match.
+        octokit: context.github,
+        owner,
+        repo,
+      });
+    } catch (error) {
+      action = { error, type: "failed" };
+      throw error;
+    } finally {
+      context.log(action);
+      if (action.type !== "nop") {
+        await options.handleAction(action);
+      }
+    }
   });
 };
 
-export = appFn;
+export { createApplicationFunction };

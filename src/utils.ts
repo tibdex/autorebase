@@ -40,11 +40,11 @@ type PullRequestPayload = {
   base: { ref: Reference };
   closed_at: null | string;
   head: { ref: Reference; sha: Sha };
+  mergeable: boolean;
   labels: Array<{ name: LabelName }>;
   mergeable_state: MergeableState;
   merged: boolean;
   number: PullRequestNumber;
-  rebaseable: boolean;
 };
 
 const debug = createDebug("autorebase");
@@ -56,26 +56,30 @@ const getPullRequestInfo = ({
     closed_at: closedAt,
     head: { ref: head, sha },
     labels,
+    mergeable,
     mergeable_state: mergeableState,
     merged,
     number: pullRequestNumber,
-    rebaseable,
   },
 }: {
   label: LabelName;
   pullRequest: PullRequestPayload;
-}): PullRequestInfo => ({
-  base,
-  head,
-  labeledAndOpenedAndRebaseable:
-    labels.map(({ name }) => name).includes(label) &&
-    closedAt === null &&
-    rebaseable,
-  mergeableState,
-  merged,
-  pullRequestNumber,
-  sha,
-});
+}): PullRequestInfo => {
+  return {
+    base,
+    head,
+    labeledAndOpenedAndRebaseable:
+      labels.map(({ name }) => name).includes(label) &&
+      closedAt === null &&
+      // We used to look at the `rebaseable` flag sent by GitHub
+      // but it's sometimes `false` even though the PR is actually rebaseable.
+      mergeable,
+    mergeableState,
+    merged,
+    pullRequestNumber,
+    sha,
+  };
+};
 
 const isMergeableStateKnown = ({
   closed_at: closedAt,
@@ -324,7 +328,6 @@ export {
   findOldestPullRequest,
   getPullRequestInfoWithKnownMergeableState,
   LabelName,
-  MergeableState,
   PullRequestInfo,
   PullRequestPayload,
   waitForKnownMergeableState,

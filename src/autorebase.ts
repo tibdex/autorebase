@@ -20,13 +20,6 @@ import {
   withLabelLock,
 } from "./utils";
 
-type Options = {
-  /**
-   * Pull requests without this label will be ignored.
-   */
-  label: LabelName;
-};
-
 /**
  * When Autorebase tries to rebase a pull request that doesn't have the label anymore.
  */
@@ -36,9 +29,16 @@ type MergeAction = { pullRequestNumber: PullRequestNumber; type: "merge" };
 
 type RebaseAction = { pullRequestNumber: PullRequestNumber; type: "rebase" };
 
+type FailedAction = { error: Error; type: "failed" };
+
 type NopAction = { type: "nop" };
 
-type Action = AbortAction | MergeAction | RebaseAction | NopAction;
+type Action =
+  | AbortAction
+  | FailedAction
+  | MergeAction
+  | RebaseAction
+  | NopAction;
 
 /**
  * See https://developer.github.com/webhooks/#events
@@ -235,22 +235,18 @@ const autorebasePullRequest = async ({
 };
 
 const autorebase = async ({
-  // Should only be used in tests.
-  _intercept = () => Promise.resolve(),
   event,
+  label,
   octokit,
-  options,
   owner,
   repo,
 }: {
-  _intercept?: () => Promise<void>;
   event: Event;
+  label: LabelName;
   octokit: Octokit;
-  options: Options;
   owner: RepoOwner;
   repo: RepoName;
 }): Promise<Action> => {
-  const { label } = options;
   debug("starting", { label, name: event.name });
 
   if (event.name === "status") {
@@ -304,9 +300,8 @@ const autorebase = async ({
         (event.payload.action === "opened" ||
           event.payload.action === "synchronize" ||
           (event.payload.action === "labeled" &&
-            event.payload.label.name === options.label))
+            event.payload.label.name === label))
       ) {
-        await _intercept();
         return autorebasePullRequest({
           label,
           octokit,
@@ -342,6 +337,4 @@ const autorebase = async ({
   return { type: "nop" };
 };
 
-export { Event, Options };
-
-export default autorebase;
+export { Action, autorebase, Event };
