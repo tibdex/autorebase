@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "module": "CommonJS",
     "outDir": "app",
     "skipLibCheck": true,
