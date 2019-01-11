@@ -1,7 +1,6 @@
 import * as Octokit from "@octokit/rest";
 import * as createDebug from "debug";
 import {
-  deleteReference,
   PullRequestNumber,
   RepoName,
   RepoOwner,
