@@ -30,6 +30,8 @@ const nop = () => {
   // Do nothing.
 };
 
+const checkOrStatusName = "autorebase-test";
+
 const createTestContext = async (
   applicationFunction: (app: Application) => void,
 ): Promise<TestContext> => {
@@ -112,14 +114,16 @@ const createTestContext = async (
   return { octokit, owner, repo, startServer };
 };
 
-const createStatus = async ({
+const createCheckOrStatus = async ({
   error,
+  mode,
   octokit,
   owner,
   ref,
   repo,
 }: {
   error?: boolean;
+  mode: "check" | "status";
   octokit: Octokit;
   owner: RepoOwner;
   ref: Reference;
@@ -131,12 +135,26 @@ const createStatus = async ({
     ref,
     repo,
   });
-  await octokit.repos.createStatus({
-    owner,
-    repo,
-    sha,
-    state: error === true ? "error" : "success",
-  });
+  if (mode === "check") {
+    await octokit.checks.create({
+      completed_at: new Date().toISOString(),
+      conclusion: error === true ? "failure" : "success",
+      head_sha: sha,
+      name: checkOrStatusName,
+      owner,
+      repo,
+      status: "completed",
+    });
+  } else {
+    await octokit.repos.createStatus({
+      context: checkOrStatusName,
+      owner,
+      repo,
+      sha,
+      state: error === true ? "error" : "success",
+    });
+  }
+
   return sha;
 };
 
@@ -157,7 +175,7 @@ const protectBranch = async ({
     owner,
     repo,
     required_pull_request_reviews: null,
-    required_status_checks: { contexts: ["default"], strict: true },
+    required_status_checks: { contexts: [checkOrStatusName], strict: true },
     restrictions: null,
   });
   return async () => {
@@ -200,7 +218,7 @@ const waitForMockedHandlerCalls = <T>({
 };
 
 export {
-  createStatus,
+  createCheckOrStatus,
   createTestContext,
   DeleteProtectedBranch,
   protectBranch,

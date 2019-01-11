@@ -15,7 +15,7 @@ import * as generateUuid from "uuid/v4";
 
 import { createApplicationFunction } from "./app";
 import {
-  createStatus,
+  createCheckOrStatus,
   createTestContext,
   DeleteProtectedBranch,
   protectBranch,
@@ -88,7 +88,7 @@ beforeEach(() => {
   });
 });
 
-describe("nominal behavior", () => {
+describe.each([["check"], ["status"]])("nominal behavior with %s", mode => {
   const [featureA1st, featureB1st] = ["feature A 1st", "feature B 1st"];
   const featureA2nd = `fixup! ${featureA1st}`;
 
@@ -161,7 +161,7 @@ describe("nominal behavior", () => {
             owner,
             repo,
           }),
-          createStatus({ octokit, owner, ref, repo }),
+          createCheckOrStatus({ mode, octokit, owner, ref, repo }),
         ]);
         await waitForKnownMergeableState({
           octokit,
@@ -247,8 +247,9 @@ describe("nominal behavior", () => {
                       },
                     ],
                   }),
-                  createStatus({
+                  createCheckOrStatus({
                     error: true,
+                    mode,
                     octokit,
                     owner,
                     ref: refsDetails.featureA.ref,
@@ -298,7 +299,8 @@ describe("nominal behavior", () => {
               },
             ],
           }),
-          createStatus({
+          createCheckOrStatus({
+            mode,
             octokit,
             owner,
             ref: refsDetails.featureA.ref,
@@ -351,7 +353,8 @@ describe("nominal behavior", () => {
               },
             ],
           }),
-          createStatus({
+          createCheckOrStatus({
+            mode,
             octokit,
             owner,
             ref: refsDetails.featureB.ref,
@@ -415,7 +418,8 @@ describe("rebasing label acts as a lock", () => {
         owner,
         repo,
       }),
-      createStatus({
+      createCheckOrStatus({
+        mode: "check",
         octokit,
         owner,
         ref: refsDetails.feature.ref,
@@ -490,16 +494,16 @@ describe("rebasing label acts as a lock", () => {
       waitForMockedHandlerCalls({
         handler: handleAction,
         implementations: [
-          async firstAction => {
-            debug({ firstAction });
-            expect(firstAction).toEqual({
+          async abortAction => {
+            debug({ abortAction });
+            expect(abortAction).toEqual({
               pullRequestNumber,
               type: "abort",
             });
           },
-          async secondAction => {
-            debug({ secondAction });
-            expect(secondAction).toEqual({
+          async rebaseAction => {
+            debug({ rebaseAction });
+            expect(rebaseAction).toEqual({
               pullRequestNumber,
               type: "rebase",
             });
@@ -514,6 +518,13 @@ describe("rebasing label acts as a lock", () => {
       }),
     ]);
 
+    await waitForKnownMergeableState({
+      octokit,
+      owner,
+      pullRequestNumber,
+      repo,
+    });
+
     await Promise.all([
       waitForMockedHandlerCalls({
         handler: handleAction,
@@ -527,18 +538,12 @@ describe("rebasing label acts as a lock", () => {
           },
         ],
       }),
-      waitForKnownMergeableState({
+      createCheckOrStatus({
+        mode: "check",
         octokit,
         owner,
-        pullRequestNumber,
+        ref: refsDetails.feature.ref,
         repo,
-      }).then(async () => {
-        await createStatus({
-          octokit,
-          owner,
-          ref: refsDetails.feature.ref,
-          repo,
-        });
       }),
     ]);
   }, 50000);
