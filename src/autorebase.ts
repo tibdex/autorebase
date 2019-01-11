@@ -45,6 +45,14 @@ type Action =
  */
 type Event =
   | {
+      name: "check_run";
+      payload: {
+        check_run: {
+          head_sha: Sha;
+        };
+      };
+    }
+  | {
       name: "pull_request";
       payload:
         | {
@@ -60,7 +68,6 @@ type Event =
   | {
       name: "pull_request_review";
       payload: {
-        action: "dismissed" | "edited" | "submitted";
         pull_request: PullRequestPayload;
       };
     }
@@ -249,17 +256,21 @@ const autorebase = async ({
 }): Promise<Action> => {
   debug("starting", { label, name: event.name });
 
-  if (event.name === "status") {
+  if (event.name === "check_run" || event.name === "status") {
+    const sha: Sha =
+      event.name === "check_run"
+        ? event.payload.check_run.head_sha
+        : event.payload.sha;
     const pullRequest = await findAutorebaseablePullRequestMatchingSha({
       label,
       octokit,
       owner,
       repo,
-      sha: event.payload.sha,
+      sha,
     });
 
     if (pullRequest) {
-      debug("autorebaseable pull request matching status", pullRequest);
+      debug("autorebaseable pull request matching sha", pullRequest);
       if (pullRequest.mergeableState === "clean") {
         return merge({
           head: pullRequest.head,
@@ -321,7 +332,6 @@ const autorebase = async ({
     } else if (
       pullRequest.labeledAndOpenedAndRebaseable &&
       event.name === "pull_request_review" &&
-      event.payload.action === "submitted" &&
       pullRequest.mergeableState === "clean"
     ) {
       return merge({
