@@ -31,12 +31,14 @@ jobs:
 
 workflows:
   version: 2
-  check-or-deploy:
+  check:
     jobs:
       - check:
           filters:
             branches:
               ignore: master
+  deploy:
+    jobs:
       - deploy:
           filters:
             branches:
