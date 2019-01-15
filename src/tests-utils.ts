@@ -193,7 +193,7 @@ const protectBranch = async ({
   };
 };
 
-type Handler<T> = (arg: T) => Promise<void>;
+type Handler<T> = (arg: T) => Promise<any>;
 
 const waitForMockedHandlerCalls = <T>({
   handler,
@@ -207,10 +207,11 @@ const waitForMockedHandlerCalls = <T>({
     implementations.reduce(
       (mock, implementation, index) =>
         mock.mockImplementationOnce(async arg => {
-          await implementation(arg);
+          const result = await implementation(arg);
           if (index === implementations.length - 1) {
             resolve();
           }
+          return result;
         }),
       initialMock,
     );

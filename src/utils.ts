@@ -152,19 +152,13 @@ const getPullRequestInfoWithKnownMergeableState = async ({
   pullRequest: PullRequestPayload;
   repo: RepoName;
 }) => {
-  if (
-    isMergeableStateKnown(pullRequest) &&
-    // Sometimes, a webhook is sent with `mergeable_state: 'clean'` when the
-    // pull request actual mergeable state is `behind`.
-    // Making a request to the GitHub API to retrieve the pull request details
-    // will return the actual mergeable state.
-    // Thus, we don't try to see if the pull request passed as an argument
-    // has already a known mergeable state, we always ask the GitHub API for it.
-    pullRequest.mergeable_state !== "clean"
-  ) {
-    return getPullRequestInfo({ label, pullRequest });
-  }
-
+  // Sometimes, a webhook is sent with `mergeable_state: 'clean'` when the
+  // pull request actual mergeable state is `behind`.
+  // Or with `mergeable_state: 'unstable'` when it's actually `behind` too.
+  // Making a request to the GitHub API to retrieve the pull request details
+  // will return the actual mergeable state.
+  // Thus, we don't try to see if the pull request passed as an argument
+  // has already a known mergeable state, we always ask the GitHub API for it.
   const pullRequestWithKnownMergeableState = await waitForKnownMergeableState({
     octokit,
     owner,

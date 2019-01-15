@@ -5,7 +5,7 @@ import { LabelName } from "./utils";
 
 type ActionHandler = (action: Action) => Promise<void>;
 
-type EventHandler = (event: Event) => Promise<void>;
+type EventHandler = (event: Event) => Promise<boolean | void>;
 
 type Options = {
   handleAction: ActionHandler;
@@ -31,12 +31,14 @@ const createApplicationFunction = (options: Options) => (app: Application) => {
 
       // @ts-ignore The event is of the good type because Autorebase only subscribes to a subset of webhooks.
       const event: Event = { name: context.name, payload: context.payload };
-      await options.handleEvent(event);
+      const handlerResult = await options.handleEvent(event);
+      const forceRebase = handlerResult === true;
 
       let action;
       try {
         action = await autorebase({
           event,
+          forceRebase,
           label: options.label,
           // @ts-ignore The value is the good one even if the type doesn't match.
           octokit: context.github,

@@ -195,31 +195,35 @@ const findAndRebasePullRequestOnSameBase = async ({
 };
 
 const autorebasePullRequest = async ({
+  forceRebase,
   label,
   octokit,
   owner,
   pullRequest,
   repo,
 }: {
+  forceRebase: boolean;
   label: LabelName;
   octokit: Octokit;
   owner: RepoOwner;
   pullRequest: PullRequestInfo;
   repo: RepoName;
 }): Promise<Action> => {
-  debug("autorebasing pull request", { pullRequest });
   const shouldBeAutosquashed = await needAutosquashing({
     octokit,
     owner,
     pullRequestNumber: pullRequest.pullRequestNumber,
     repo,
   });
-  debug("should be autosquashed", {
-    pullRequestNumber: pullRequest.pullRequestNumber,
+  debug("autorebasing pull request", {
+    forceRebase,
+    pullRequest,
     shouldBeAutosquashed,
   });
   const shouldBeRebased =
-    shouldBeAutosquashed || pullRequest.mergeableState === "behind";
+    forceRebase ||
+    shouldBeAutosquashed ||
+    pullRequest.mergeableState === "behind";
   if (shouldBeRebased) {
     return rebase({
       label,
@@ -243,12 +247,14 @@ const autorebasePullRequest = async ({
 
 const autorebase = async ({
   event,
+  forceRebase,
   label,
   octokit,
   owner,
   repo,
 }: {
   event: Event;
+  forceRebase: boolean;
   label: LabelName;
   octokit: Octokit;
   owner: RepoOwner;
@@ -307,13 +313,15 @@ const autorebase = async ({
 
     if (event.name === "pull_request") {
       if (
-        pullRequest.labeledAndOpenedAndRebaseable &&
-        (event.payload.action === "opened" ||
-          event.payload.action === "synchronize" ||
-          (event.payload.action === "labeled" &&
-            event.payload.label.name === label))
+        forceRebase ||
+        (pullRequest.labeledAndOpenedAndRebaseable &&
+          (event.payload.action === "opened" ||
+            event.payload.action === "synchronize" ||
+            (event.payload.action === "labeled" &&
+              event.payload.label.name === label)))
       ) {
         return autorebasePullRequest({
+          forceRebase,
           label,
           octokit,
           owner,
