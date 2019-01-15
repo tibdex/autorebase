@@ -621,9 +621,8 @@ describe("rebase failed", () => {
               ["payload", "pull_request", "mergeable_state"],
               "dirty",
             );
-            // Pretend that the pull request is actually mergeable so that Autorebase try to rebase it.
-            labeledEvent.payload.pull_request.mergeable = true;
-            labeledEvent.payload.pull_request.mergeable_state = "behind";
+            // Tell Autorebase to attempt rebasing regardless of the mergeable state.
+            return true;
           },
         ],
       }),
@@ -649,5 +648,5 @@ describe("rebase failed", () => {
 
     const comment = await getLastIssueComment(pullRequestNumber);
     expect(comment).toMatch(/The rebase failed/);
-  }, 40000);
+  }, 35000);
 });
