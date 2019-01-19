@@ -1,10 +1,9 @@
 import * as assert from "assert";
 
 import * as Octokit from "@octokit/rest";
-import * as createDebug from "debug";
 import {
   PullRequestNumber,
-  Reference,
+  Ref,
   RepoName,
   RepoOwner,
   Sha,
@@ -12,6 +11,8 @@ import {
 
 // tslint:disable-next-line:no-var-requires (otherwise we get the error TS2497).
 const promiseRetry = require("promise-retry");
+
+type Debug = (...args: any[]) => void;
 
 type LabelName = string;
 
@@ -27,8 +28,8 @@ type MergeableState =
   | "unstable";
 
 type PullRequestInfo = {
-  base: Reference;
-  head: Reference;
+  base: Ref;
+  head: Ref;
   labeledAndOpenedAndRebaseable: boolean;
   mergeableState: MergeableState;
   merged: boolean;
@@ -36,20 +37,13 @@ type PullRequestInfo = {
   sha: Sha;
 };
 
-type PullRequestPayload = {
-  base: { ref: Reference };
-  closed_at: null | string;
-  head: { ref: Reference; sha: Sha };
-  mergeable: boolean;
-  labels: Array<{ name: LabelName }>;
-  mergeable_state: MergeableState;
-  merged: boolean;
-  number: PullRequestNumber;
-};
-
-const debug = createDebug("autorebase");
+const sleep = (milliseconds: number) =>
+  new Promise(resolve => {
+    setTimeout(resolve, milliseconds);
+  });
 
 const getPullRequestInfo = ({
+  debug,
   label,
   pullRequest: {
     base: { ref: base },
@@ -62,9 +56,23 @@ const getPullRequestInfo = ({
     number: pullRequestNumber,
   },
 }: {
+  debug: Debug;
   label: LabelName;
-  pullRequest: PullRequestPayload;
+  pullRequest: Octokit.PullsGetResponse;
 }): PullRequestInfo => {
+  const labelNames = labels.map(({ name }) => name);
+  debug("pull request info", {
+    base,
+    closedAt,
+    head,
+    labelNames,
+    mergeable,
+    mergeableState,
+    merged,
+    pullRequestNumber,
+    sha,
+  });
+
   return {
     base,
     head,
@@ -74,7 +82,7 @@ const getPullRequestInfo = ({
       // We used to look at the `rebaseable` flag sent by GitHub
       // but it's sometimes `false` even though the PR is actually rebaseable.
       mergeable,
-    mergeableState,
+    mergeableState: mergeableState as MergeableState,
     merged,
     pullRequestNumber,
     sha,
@@ -84,55 +92,59 @@ const getPullRequestInfo = ({
 const isMergeableStateKnown = ({
   closed_at: closedAt,
   mergeable_state: mergeableState,
-}: PullRequestPayload) => closedAt !== null || mergeableState !== "unknown";
+}: Octokit.PullsGetResponse) =>
+  closedAt !== null || mergeableState !== "unknown";
 
 const checkKnownMergeableState = async ({
+  debug,
   octokit,
   owner,
   pullRequestNumber,
   repo,
 }: {
+  debug: Debug;
   octokit: Octokit;
   owner: RepoOwner;
   pullRequestNumber: PullRequestNumber;
   repo: RepoName;
-}): Promise<PullRequestPayload> => {
-  const { data: pullRequest } = await octokit.pullRequests.get({
+}): Promise<Octokit.PullsGetResponse> => {
+  debug("fetching mergeable state", { pullRequestNumber });
+  const { data: pullRequest } = await octokit.pulls.get({
     number: pullRequestNumber,
     owner,
     repo,
   });
-  // @ts-ignore mergeable_state is missing in Octokit's type.
   const { closed_at: closedAt, mergeable_state: mergeableState } = pullRequest;
   debug("mergeable state", { closedAt, mergeableState, pullRequestNumber });
-  // @ts-ignore mergeable_state is missing in Octokit's type.
   assert(isMergeableStateKnown(pullRequest));
-  // @ts-ignore our PullRequestPayload is simplified.
   return pullRequest;
 };
 
 const waitForKnownMergeableState = ({
+  debug,
   octokit,
   owner,
   pullRequestNumber,
   repo,
 }: {
+  debug: Debug;
   octokit: Octokit;
   owner: RepoOwner;
   pullRequestNumber: PullRequestNumber;
   repo: RepoName;
-}): Promise<PullRequestPayload> =>
+}): Promise<Octokit.PullsGetResponse> =>
   promiseRetry(
     async (retry: (error: any) => void) => {
       try {
         return await checkKnownMergeableState({
+          debug,
           octokit,
           owner,
           pullRequestNumber,
           repo,
         });
       } catch (error) {
-        debug("retrying to know mergeable state", pullRequestNumber);
+        debug("retrying to know mergeable state", { pullRequestNumber });
         return retry(error);
       }
     },
@@ -140,16 +152,18 @@ const waitForKnownMergeableState = ({
   );
 
 const getPullRequestInfoWithKnownMergeableState = async ({
+  debug,
   label,
   octokit,
   owner,
-  pullRequest,
+  pullRequestNumber,
   repo,
 }: {
+  debug: Debug;
   label: LabelName;
   octokit: Octokit;
   owner: RepoOwner;
-  pullRequest: PullRequestPayload;
+  pullRequestNumber: PullRequestNumber;
   repo: RepoName;
 }) => {
   // Sometimes, a webhook is sent with `mergeable_state: 'clean'` when the
@@ -160,21 +174,24 @@ const getPullRequestInfoWithKnownMergeableState = async ({
   // Thus, we don't try to see if the pull request passed as an argument
   // has already a known mergeable state, we always ask the GitHub API for it.
   const pullRequestWithKnownMergeableState = await waitForKnownMergeableState({
+    debug,
     octokit,
     owner,
-    pullRequestNumber: pullRequest.number,
+    pullRequestNumber,
     repo,
   });
   return getPullRequestInfo({
+    debug,
     label,
     pullRequest: pullRequestWithKnownMergeableState,
   });
 };
 
-const getPullRequestNumbers = (response: Octokit.AnyResponse) =>
-  response.data.items.map((item: any) => item.number);
+const getPullRequestNumbers = (searchResults: any): PullRequestNumber[] =>
+  searchResults.items.map((item: any) => item.number);
 
 const findOldestPullRequest = async ({
+  debug,
   extraSearchQualifiers,
   label,
   octokit,
@@ -182,6 +199,7 @@ const findOldestPullRequest = async ({
   predicate,
   repo,
 }: {
+  debug: Debug;
   extraSearchQualifiers: string;
   label: LabelName;
   octokit: Octokit;
@@ -193,67 +211,55 @@ const findOldestPullRequest = async ({
   debug("searching oldest matching pull request", { query });
 
   // Use the search endpoint to be able to filter on labels.
-  let response = await octokit.search.issues({
+  const options = octokit.search.issuesAndPullRequests.endpoint.merge({
     order: "asc",
     q: query,
     sort: "created",
   });
 
-  // Using a constant condition because the loop
-  // exits as soon as a matching pull request is found
-  // or when there is no more pages.
-  while (true) {
-    const pullRequestNumbers = getPullRequestNumbers(response);
-    debug({ pullRequestNumbers });
-    const initialPromise = Promise.resolve(null);
-    const matchingPullRequest = await pullRequestNumbers.reduce(
-      async (
-        promise: Promise<PullRequestInfo | null>,
-        pullRequestNumber: PullRequestNumber,
-      ) => {
-        debug({ pullRequestNumber });
-        const result = await promise;
-        if (result) {
-          return result;
-        }
-        const { data } = await octokit.pullRequests.get({
-          number: pullRequestNumber,
-          owner,
-          repo,
-        });
-        debug("after octokit.pullRequests.get");
-        const pullRequest = await getPullRequestInfoWithKnownMergeableState({
-          label,
-          octokit,
-          owner,
-          // @ts-ignore our PullRequestPayload is simplified.
-          pullRequest: data,
-          repo,
-        });
-        debug({ pullRequest });
-        return predicate(pullRequest) ? pullRequest : null;
-      },
-      initialPromise,
-    );
-    if (matchingPullRequest) {
-      return matchingPullRequest;
-    }
-    if (octokit.hasNextPage(response)) {
-      debug("getting next page");
-      response = await octokit.getNextPage(response);
-    } else {
-      return null;
-    }
-  }
+  // Waiting a bit before to let GitHub make its data consistent.
+  await sleep(1000);
+  const searchResults = await octokit.paginate(options);
+  const pullRequestNumbers = Array.prototype.concat(
+    ...searchResults.map(getPullRequestNumbers),
+  );
+  debug({ pullRequestNumbers });
+  const initialPromise = Promise.resolve(null);
+  return pullRequestNumbers.reduce(
+    async (
+      promise: Promise<PullRequestInfo | null>,
+      pullRequestNumber: PullRequestNumber,
+    ) => {
+      const result = await promise;
+      if (result) {
+        return result;
+      }
+      debug({ pullRequestNumber });
+      const pullRequest = await getPullRequestInfoWithKnownMergeableState({
+        debug,
+        label,
+        octokit,
+        owner,
+        pullRequestNumber,
+        repo,
+      });
+      const matchingPredicate = predicate(pullRequest);
+      debug({ matchingPredicate, pullRequest });
+      return matchingPredicate ? pullRequest : null;
+    },
+    initialPromise,
+  );
 };
 
 const findAutorebaseablePullRequestMatchingSha = ({
+  debug,
   label,
   octokit,
   owner,
   repo,
   sha,
 }: {
+  debug: Debug;
   label: LabelName;
   octokit: Octokit;
   owner: RepoOwner;
@@ -261,6 +267,7 @@ const findAutorebaseablePullRequestMatchingSha = ({
   sha: Sha;
 }) =>
   findOldestPullRequest({
+    debug,
     extraSearchQualifiers: sha,
     label,
     octokit,
@@ -277,6 +284,7 @@ const findAutorebaseablePullRequestMatchingSha = ({
 // Subsequent Autorebase calls won't be able to do the same thing because the GitHub REST API prevents removing a label that's not already there.
 const withLabelLock = async ({
   action,
+  debug,
   label,
   octokit,
   owner,
@@ -284,6 +292,7 @@ const withLabelLock = async ({
   repo,
 }: {
   action: () => Promise<void>;
+  debug: Debug;
   label: LabelName;
   octokit: Octokit;
   owner: RepoOwner;
@@ -317,13 +326,13 @@ const withLabelLock = async ({
 };
 
 export {
-  debug,
+  Debug,
   findAutorebaseablePullRequestMatchingSha,
   findOldestPullRequest,
   getPullRequestInfoWithKnownMergeableState,
   LabelName,
   PullRequestInfo,
-  PullRequestPayload,
+  sleep,
   waitForKnownMergeableState,
   withLabelLock,
 };

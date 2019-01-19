@@ -1,9 +1,7 @@
 {
   "compilerOptions": {
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "module": "CommonJS",
-    "outDir": "app",
+    "noEmit": true,
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2017"

@@ -7,63 +7,36 @@ import {
 } from "shared-github-internals/lib/git";
 import {
   createPullRequest,
-  createReferences,
-  DeleteReferences,
+  createRefs,
+  DeleteRefs,
   RefsDetails,
 } from "shared-github-internals/lib/tests/git";
 import * as generateUuid from "uuid/v4";
 
 import { createApplicationFunction } from "./app";
+import { Action } from "./autorebase";
 import {
   createCheckOrStatus,
   createTestContext,
+  debuggableStep,
   DeleteProtectedBranch,
+  getLabelNames,
+  getLastIssueComment,
   protectBranch,
+  sleepAndWaitForKnownMergeableState,
   StartServer,
   StopServer,
   waitForMockedHandlerCalls,
 } from "./tests-utils";
-import { LabelName, waitForKnownMergeableState } from "./utils";
+import { LabelName } from "./utils";
 
-const debug = createDebug("autorebase-test");
+const debug = createDebug("autorebase:test");
 
 const [initial, master1st, feature1st] = [
   "initial",
   "master 1st",
   "feature1st",
 ];
-
-const debuggableStep = async (
-  name: string,
-  asyncAction: () => Promise<void>,
-) => {
-  debug(`[start] ${name}`);
-  try {
-    await asyncAction();
-    debug(`[done] ${name}`);
-  } catch (error) {
-    debug(`[failed] ${name}`);
-    throw error;
-  }
-};
-
-const getLabelNames = async (pullRequestNumber: PullRequestNumber) => {
-  const { data: labels } = await octokit.issues.listLabelsOnIssue({
-    number: pullRequestNumber,
-    owner,
-    repo,
-  });
-  return labels.map(({ name }) => name);
-};
-
-const getLastIssueComment = async (pullRequestNumber: PullRequestNumber) => {
-  const { data: comments } = await octokit.issues.listComments({
-    number: pullRequestNumber,
-    owner,
-    repo,
-  });
-  return comments[comments.length - 1].body;
-};
 
 const handleAction = jest.fn();
 const handleEvent = jest.fn();
@@ -130,14 +103,14 @@ describe.each([["check"], ["status"]])("nominal behavior with %s", mode => {
     },
   };
 
-  let pullRequestNumberA: PullRequestNumber;
-  let pullRequestNumberB: PullRequestNumber;
+  let pullRequestANumber: PullRequestNumber;
+  let pullRequestBNumber: PullRequestNumber;
   let refsDetails: RefsDetails;
   let deleteMasterBranch: DeleteProtectedBranch;
   let stopServer: StopServer;
 
   beforeAll(async () => {
-    ({ refsDetails } = await createReferences({
+    ({ refsDetails } = await createRefs({
       octokit,
       owner,
       repo,
@@ -151,7 +124,7 @@ describe.each([["check"], ["status"]])("nominal behavior with %s", mode => {
       repo,
     });
 
-    [pullRequestNumberA, pullRequestNumberB] = await Promise.all(
+    [pullRequestANumber, pullRequestBNumber] = await Promise.all(
       [refsDetails.featureA.ref, refsDetails.featureB.ref].map(async ref => {
         const [pullRequestNumber] = await Promise.all([
           createPullRequest({
@@ -163,7 +136,8 @@ describe.each([["check"], ["status"]])("nominal behavior with %s", mode => {
           }),
           createCheckOrStatus({ mode, octokit, owner, ref, repo }),
         ]);
-        await waitForKnownMergeableState({
+        await sleepAndWaitForKnownMergeableState({
+          debug,
           octokit,
           owner,
           pullRequestNumber,
@@ -186,9 +160,8 @@ describe.each([["check"], ["status"]])("nominal behavior with %s", mode => {
   });
 
   test("full story", async () => {
-    await debuggableStep(
-      "feature A clean but autosquashing needed",
-      async () => {
+    await debuggableStep("feature A clean but autosquashing needed", {
+      async action() {
         await Promise.all([
           waitForMockedHandlerCalls({
             handler: handleAction,
@@ -196,7 +169,7 @@ describe.each([["check"], ["status"]])("nominal behavior with %s", mode => {
               async aAutosquashedAction => {
                 debug({ aAutosquashedAction });
                 expect(aAutosquashedAction).toEqual({
-                  pullRequestNumber: pullRequestNumberA,
+                  pullRequestNumber: pullRequestANumber,
                   type: "rebase",
                 });
               },
@@ -204,163 +177,188 @@ describe.each([["check"], ["status"]])("nominal behavior with %s", mode => {
           }),
           octokit.issues.addLabels({
             labels: [label],
-            number: pullRequestNumberA,
+            number: pullRequestANumber,
             owner,
             repo,
           }),
         ]);
       },
-    );
+      debug,
+    });
 
-    await waitForKnownMergeableState({
+    await sleepAndWaitForKnownMergeableState({
+      debug,
       octokit,
       owner,
-      pullRequestNumber: pullRequestNumberA,
+      pullRequestNumber: pullRequestANumber,
       repo,
     });
 
     await debuggableStep(
       "feature B rebased because of error status on feature A",
-      async () => {
-        await Promise.all([
-          waitForMockedHandlerCalls({
-            handler: handleEvent,
-            implementations: [
-              async bLabeledEvent => {
-                debug({ bLabeledEvent });
-                // Pretend that the pull request has actually been unlabeled
-                // so that Autorebase will ignore it.
-                // That's because we want to test that feature B will still get handled
-                // because of an error status event on feature A.
-                bLabeledEvent.payload.action = "unlabeled";
+      {
+        async action() {
+          await Promise.all([
+            waitForMockedHandlerCalls({
+              handler: handleEvent,
+              implementations: [
+                async bLabeledEvent => {
+                  debug({ bLabeledEvent });
+                  expect(bLabeledEvent).toHaveProperty(
+                    ["payload", "pull_request", "number"],
+                    pullRequestBNumber,
+                  );
+                  expect(bLabeledEvent).toHaveProperty(
+                    ["payload", "action"],
+                    "labeled",
+                  );
+                  // Pretend that the pull request has actually been unlabeled
+                  // so that Autorebase will ignore it.
+                  // That's because we want to test that feature B will still get handled
+                  // because of an error status event on feature A.
+                  bLabeledEvent.payload.action = "unlabeled";
 
-                await Promise.all([
-                  waitForMockedHandlerCalls({
-                    handler: handleAction,
-                    implementations: [
-                      async bRebasedAction => {
-                        debug({ bRebasedAction });
-                        expect(bRebasedAction).toEqual({
-                          pullRequestNumber: pullRequestNumberB,
-                          type: "rebase",
-                        });
-                      },
-                    ],
-                  }),
-                  createCheckOrStatus({
-                    error: true,
-                    mode,
-                    octokit,
-                    owner,
-                    ref: refsDetails.featureA.ref,
-                    repo,
-                  }),
-                ]);
-              },
-            ],
-          }),
-          octokit.issues.addLabels({
-            labels: [label],
-            number: pullRequestNumberB,
-            owner,
-            repo,
-          }),
-        ]);
+                  await Promise.all([
+                    waitForMockedHandlerCalls({
+                      handler: handleAction,
+                      implementations: [
+                        async bRebasedAction => {
+                          debug({ bRebasedAction });
+                          expect(bRebasedAction).toEqual({
+                            pullRequestNumber: pullRequestBNumber,
+                            type: "rebase",
+                          });
+                        },
+                      ],
+                    }),
+                    createCheckOrStatus({
+                      error: true,
+                      mode,
+                      octokit,
+                      owner,
+                      ref: refsDetails.featureA.ref,
+                      repo,
+                    }),
+                  ]);
+                },
+              ],
+            }),
+            octokit.issues.addLabels({
+              labels: [label],
+              number: pullRequestBNumber,
+              owner,
+              repo,
+            }),
+          ]);
+        },
+        debug,
       },
     );
 
-    await waitForKnownMergeableState({
+    await sleepAndWaitForKnownMergeableState({
+      debug,
       octokit,
       owner,
-      pullRequestNumber: pullRequestNumberB,
+      pullRequestNumber: pullRequestBNumber,
       repo,
     });
 
     await debuggableStep(
       "feature A merged after successful status, then feature B rebased",
-      async () => {
-        await Promise.all([
-          waitForMockedHandlerCalls({
-            handler: handleAction,
-            implementations: [
-              async aMergedAction => {
-                debug({ aMergedAction });
-                expect(aMergedAction).toEqual({
-                  pullRequestNumber: pullRequestNumberA,
-                  type: "merge",
-                });
-              },
-              async bRebasedAction => {
-                debug({ bRebasedAction });
-                expect(bRebasedAction).toEqual({
-                  pullRequestNumber: pullRequestNumberB,
-                  type: "rebase",
-                });
-              },
-            ],
-          }),
-          createCheckOrStatus({
-            mode,
-            octokit,
-            owner,
-            ref: refsDetails.featureA.ref,
-            repo,
-          }),
-        ]);
+      {
+        async action() {
+          await Promise.all([
+            waitForMockedHandlerCalls({
+              handler: handleAction,
+              implementations: [
+                async aMergedAction => {
+                  debug({ aMergedAction });
+                  expect(aMergedAction).toEqual({
+                    pullRequestNumber: pullRequestANumber,
+                    type: "merge",
+                  });
+                },
+                async bRebasedAction => {
+                  debug({ bRebasedAction });
+                  expect(bRebasedAction).toEqual({
+                    pullRequestNumber: pullRequestBNumber,
+                    type: "rebase",
+                  });
+                },
+              ],
+            }),
+            createCheckOrStatus({
+              mode,
+              octokit,
+              owner,
+              ref: refsDetails.featureA.ref,
+              repo,
+            }),
+          ]);
+        },
+        debug,
       },
     );
 
-    await waitForKnownMergeableState({
+    await sleepAndWaitForKnownMergeableState({
+      debug,
       octokit,
       owner,
-      pullRequestNumber: pullRequestNumberB,
+      pullRequestNumber: pullRequestBNumber,
       repo,
     });
 
     await debuggableStep(
       "feature B merged after review approval (with successful status)",
-      async () => {
-        await Promise.all([
-          waitForMockedHandlerCalls({
-            handler: handleEvent,
-            implementations: [
-              async bSuccessfulStatusEvent => {
-                debug({ bSuccessfulStatusEvent });
-                // Pretend that the pull request has actually been approved by a reviewer.
-                // That's because that's the event type we want to test here and not the status one.
-                // after an approved review status event.
-                bSuccessfulStatusEvent.name = "pull_request_review";
-                bSuccessfulStatusEvent.payload = {
-                  action: "submitted",
-                  pull_request: {
-                    closed_at: null,
-                    mergeable_state: "unknown",
-                    number: pullRequestNumberB,
-                  },
-                };
-              },
-            ],
-          }),
-          waitForMockedHandlerCalls({
-            handler: handleAction,
-            implementations: [
-              async bMergedAction => {
-                debug({ bMergedAction });
-                expect(bMergedAction).toEqual({
-                  pullRequestNumber: pullRequestNumberB,
-                  type: "merge",
-                });
-              },
-            ],
-          }),
-          createCheckOrStatus({
-            mode,
-            octokit,
-            owner,
-            ref: refsDetails.featureB.ref,
-            repo,
-          }),
-        ]);
+      {
+        async action() {
+          await Promise.all([
+            waitForMockedHandlerCalls({
+              handler: handleEvent,
+              implementations: [
+                async bSuccessfulCheckOrStatusEvent => {
+                  debug({ bSuccessfulCheckOrStatusEvent });
+                  expect(bSuccessfulCheckOrStatusEvent).toHaveProperty(
+                    "name",
+                    mode === "check" ? "check_run" : "status",
+                  );
+                  // Pretend that the pull request has actually been approved by a reviewer.
+                  // That's because that's the event type we want to test here and not the status one.
+                  // after an approved review status event.
+                  bSuccessfulCheckOrStatusEvent.name = "pull_request_review";
+                  bSuccessfulCheckOrStatusEvent.payload = {
+                    action: "submitted",
+                    pull_request: {
+                      closed_at: null,
+                      mergeable_state: "unknown",
+                      number: pullRequestBNumber,
+                    },
+                  };
+                },
+              ],
+            }),
+            waitForMockedHandlerCalls({
+              handler: handleAction,
+              implementations: [
+                async bMergedAction => {
+                  debug({ bMergedAction });
+                  expect(bMergedAction).toEqual({
+                    pullRequestNumber: pullRequestBNumber,
+                    type: "merge",
+                  });
+                },
+              ],
+            }),
+            createCheckOrStatus({
+              mode,
+              octokit,
+              owner,
+              ref: refsDetails.featureB.ref,
+              repo,
+            }),
+          ]);
+        },
+        debug,
       },
     );
   }, 150000);
@@ -396,7 +394,7 @@ describe("rebasing label acts as a lock", () => {
   let stopServer: StopServer;
 
   beforeAll(async () => {
-    ({ refsDetails } = await createReferences({
+    ({ refsDetails } = await createRefs({
       octokit,
       owner,
       repo,
@@ -427,7 +425,8 @@ describe("rebasing label acts as a lock", () => {
       }),
     ]);
 
-    await waitForKnownMergeableState({
+    await sleepAndWaitForKnownMergeableState({
+      debug,
       octokit,
       owner,
       pullRequestNumber,
@@ -447,105 +446,148 @@ describe("rebasing label acts as a lock", () => {
   });
 
   test("concurrent calls of Autorebase lead to only one rebase attempt", async () => {
-    let unblockFirstCall: () => void;
+    await debuggableStep("rebase conflict", {
+      async action() {
+        const actions: Action[] = [];
+        const forceRebase = true;
+        let unblockFirstCall: () => void;
 
-    await Promise.all([
-      waitForMockedHandlerCalls({
-        handler: handleEvent,
-        implementations: [
-          async labeledEvent => {
-            debug({ labeledEvent });
-            await Promise.all([
-              new Promise(innerResolve => {
-                unblockFirstCall = innerResolve;
-              }),
-              octokit.issues.removeLabel({
-                name: label,
-                number: pullRequestNumber,
-                owner,
-                repo,
-              }),
-            ]);
-          },
-          async unlabeledEvent => {
-            debug({ unlabeledEvent });
-            await octokit.issues.addLabels({
-              labels: [label],
-              number: pullRequestNumber,
-              owner,
-              repo,
-            });
-          },
-          async relabeledEvent => {
-            debug({ relabeledEvent });
-            // Wait for a request to be made to GitHub before resolving the other call.
-            // We need to do that because removing a label on a pull request is not a perfectly atomic lock.
-            // Indeed, if two removal requests are made really close to one another (typically less than 10ms), GitHub will accept both of them.
-            octokit.pullRequests
-              .get({
-                number: pullRequestNumber,
-                owner,
-                repo,
-              })
-              .then(unblockFirstCall);
-          },
-        ],
-      }),
-      waitForMockedHandlerCalls({
-        handler: handleAction,
-        implementations: [
-          async abortAction => {
-            debug({ abortAction });
-            expect(abortAction).toEqual({
-              pullRequestNumber,
-              type: "abort",
-            });
-          },
-          async rebaseAction => {
-            debug({ rebaseAction });
-            expect(rebaseAction).toEqual({
-              pullRequestNumber,
-              type: "rebase",
-            });
-          },
-        ],
-      }),
-      octokit.issues.addLabels({
-        labels: [label],
-        number: pullRequestNumber,
-        owner,
-        repo,
-      }),
-    ]);
+        await Promise.all([
+          waitForMockedHandlerCalls({
+            handler: handleEvent,
+            implementations: [
+              async labeledEvent => {
+                debug({ labeledEvent });
+                expect(labeledEvent).toHaveProperty(
+                  ["payload", "pull_request", "number"],
+                  pullRequestNumber,
+                );
+                expect(labeledEvent).toHaveProperty(
+                  ["payload", "action"],
+                  "labeled",
+                );
+                await Promise.all([
+                  new Promise(innerResolve => {
+                    unblockFirstCall = innerResolve;
+                  }).then(() => {
+                    debug("first call unblocked");
+                  }),
+                  octokit.issues.removeLabel({
+                    name: label,
+                    number: pullRequestNumber,
+                    owner,
+                    repo,
+                  }),
+                ]);
+                return forceRebase;
+              },
+              async unlabeledEvent => {
+                debug({ unlabeledEvent });
+                expect(unlabeledEvent).toHaveProperty(
+                  ["payload", "pull_request", "number"],
+                  pullRequestNumber,
+                );
+                expect(unlabeledEvent).toHaveProperty(
+                  ["payload", "action"],
+                  "unlabeled",
+                );
+                await octokit.issues.addLabels({
+                  labels: [label],
+                  number: pullRequestNumber,
+                  owner,
+                  repo,
+                });
+              },
+              async relabeledEvent => {
+                debug({ relabeledEvent });
+                expect(relabeledEvent).toHaveProperty(
+                  ["payload", "pull_request", "number"],
+                  pullRequestNumber,
+                );
+                expect(relabeledEvent).toHaveProperty(
+                  ["payload", "action"],
+                  "labeled",
+                );
+                // Wait for a request to be made to GitHub before resolving the other call.
+                // We need to do that because removing a label on a pull request is not a perfectly atomic lock.
+                // Indeed, if two removal requests are made really close to one another (typically less than 10ms), GitHub will accept both of them.
+                octokit.pulls
+                  .get({
+                    number: pullRequestNumber,
+                    owner,
+                    repo,
+                  })
+                  .then(unblockFirstCall);
+                return forceRebase;
+              },
+            ],
+          }),
+          waitForMockedHandlerCalls({
+            handler: handleAction,
+            implementations: [
+              async firstAction => {
+                debug({ firstAction });
+                actions.push(firstAction);
+              },
+              async secondAction => {
+                debug({ secondAction });
+                actions.push(secondAction);
+                expect(actions).toContainEqual({
+                  pullRequestNumber,
+                  type: "abort",
+                });
+                expect(actions).toContainEqual({
+                  pullRequestNumber,
+                  type: "rebase",
+                });
+              },
+            ],
+          }),
+          octokit.issues.addLabels({
+            labels: [label],
+            number: pullRequestNumber,
+            owner,
+            repo,
+          }),
+        ]);
+      },
+      debug,
+    });
 
-    await waitForKnownMergeableState({
+    await sleepAndWaitForKnownMergeableState({
+      debug,
       octokit,
       owner,
       pullRequestNumber,
       repo,
     });
 
-    await Promise.all([
-      waitForMockedHandlerCalls({
-        handler: handleAction,
-        implementations: [
-          async mergeAction => {
-            debug({ mergeAction });
-            expect(mergeAction).toEqual({
-              pullRequestNumber,
-              type: "merge",
-            });
-          },
-        ],
-      }),
-      createCheckOrStatus({
-        mode: "check",
-        octokit,
-        owner,
-        ref: refsDetails.feature.ref,
-        repo,
-      }),
-    ]);
+    await debuggableStep("merge", {
+      async action() {
+        await Promise.all([
+          waitForMockedHandlerCalls({
+            handler: handleAction,
+            implementations: [
+              async mergeAction => {
+                debug({ mergeAction });
+                expect(mergeAction).toEqual({
+                  pullRequestNumber,
+                  type: "merge",
+                });
+              },
+            ],
+          }),
+          createCheckOrStatus({
+            mode: "check",
+            octokit,
+            owner,
+            ref: refsDetails.feature.ref,
+            repo,
+          }),
+        ]);
+      },
+      debug,
+    });
   }, 50000);
 });
 
@@ -573,13 +615,13 @@ describe("rebase failed", () => {
     },
   };
 
-  let deleteReferences: DeleteReferences;
+  let deleteRefs: DeleteRefs;
   let pullRequestNumber: PullRequestNumber;
   let refsDetails: RefsDetails;
   let stopServer: StopServer;
 
   beforeAll(async () => {
-    ({ deleteReferences, refsDetails } = await createReferences({
+    ({ deleteRefs, refsDetails } = await createRefs({
       octokit,
       owner,
       repo,
@@ -592,7 +634,8 @@ describe("rebase failed", () => {
       owner,
       repo,
     });
-    await waitForKnownMergeableState({
+    await sleepAndWaitForKnownMergeableState({
+      debug,
       octokit,
       owner,
       pullRequestNumber,
@@ -605,7 +648,7 @@ describe("rebase failed", () => {
     stopServer();
 
     await Promise.all([
-      deleteReferences(),
+      deleteRefs(),
       octokit.issues.deleteLabel({ name: label, owner, repo }),
     ]);
   });
@@ -617,6 +660,14 @@ describe("rebase failed", () => {
         implementations: [
           async labeledEvent => {
             debug({ labeledEvent });
+            expect(labeledEvent).toHaveProperty(
+              ["payload", "pull_request", "number"],
+              pullRequestNumber,
+            );
+            expect(labeledEvent).toHaveProperty(
+              ["payload", "action"],
+              "labeled",
+            );
             expect(labeledEvent).toHaveProperty(
               ["payload", "pull_request", "mergeable_state"],
               "dirty",
@@ -643,10 +694,20 @@ describe("rebase failed", () => {
       }),
     ]);
 
-    const labelsAfter = await getLabelNames(pullRequestNumber);
+    const labelsAfter = await getLabelNames({
+      octokit,
+      owner,
+      pullRequestNumber,
+      repo,
+    });
     expect(labelsAfter).not.toContain(label);
 
-    const comment = await getLastIssueComment(pullRequestNumber);
+    const comment = await getLastIssueComment({
+      octokit,
+      owner,
+      pullRequestNumber,
+      repo,
+    });
     expect(comment).toMatch(/The rebase failed/);
   }, 35000);
 });

@@ -1,22 +1,22 @@
 import * as Octokit from "@octokit/rest";
-import rebasePullRequest, { needAutosquashing } from "github-rebase";
+import * as createDebug from "debug";
+import { needAutosquashing, rebasePullRequest } from "github-rebase";
 import {
-  deleteReference,
+  deleteRef,
   PullRequestNumber,
-  Reference,
+  Ref,
   RepoName,
   RepoOwner,
   Sha,
 } from "shared-github-internals/lib/git";
 
 import {
-  debug,
+  Debug,
   findAutorebaseablePullRequestMatchingSha,
   findOldestPullRequest,
   getPullRequestInfoWithKnownMergeableState,
   LabelName,
   PullRequestInfo,
-  PullRequestPayload,
   withLabelLock,
 } from "./utils";
 
@@ -43,7 +43,7 @@ type Action =
 /**
  * See https://developer.github.com/webhooks/#events
  */
-type Event =
+type Event = { id: string } & (
   | {
       name: "check_run";
       payload: {
@@ -57,18 +57,19 @@ type Event =
       payload:
         | {
             action: "closed" | "opened" | "synchronize";
-            pull_request: PullRequestPayload;
+            pull_request: Octokit.PullsGetResponse;
           }
         | {
             action: "labeled";
             label: { name: LabelName };
-            pull_request: PullRequestPayload;
+            pull_request: Octokit.PullsGetResponse;
           };
     }
   | {
       name: "pull_request_review";
       payload: {
-        pull_request: PullRequestPayload;
+        action: "dismissed" | "edited" | "submitted";
+        pull_request: { number: PullRequestNumber };
       };
     }
   | {
@@ -76,23 +77,27 @@ type Event =
       payload: {
         sha: Sha;
       };
-    };
+    });
+
+const globalDebug = createDebug("autorebase");
 
 const merge = async ({
+  debug,
   head,
   octokit,
   owner,
   pullRequestNumber,
   repo,
 }: {
-  head: Reference;
+  debug: Debug;
+  head: Ref;
   octokit: Octokit;
   owner: RepoOwner;
   pullRequestNumber: PullRequestNumber;
   repo: RepoName;
 }): Promise<MergeAction> => {
   debug("merging", pullRequestNumber);
-  await octokit.pullRequests.merge({
+  await octokit.pulls.merge({
     merge_method: "rebase",
     number: pullRequestNumber,
     owner,
@@ -100,7 +105,7 @@ const merge = async ({
   });
   debug("merged", pullRequestNumber);
   debug("deleting reference", head);
-  await deleteReference({ octokit, owner, ref: head, repo });
+  await deleteRef({ octokit, owner, ref: head, repo });
   debug("reference deleted", head);
   return {
     pullRequestNumber,
@@ -109,12 +114,14 @@ const merge = async ({
 };
 
 const rebase = async ({
+  debug,
   label,
   octokit,
   owner,
   pullRequestNumber,
   repo,
 }: {
+  debug: Debug;
   label: LabelName;
   pullRequestNumber: PullRequestNumber;
   octokit: Octokit;
@@ -133,6 +140,7 @@ const rebase = async ({
           repo,
         });
       },
+      debug,
       label,
       octokit,
       owner,
@@ -162,12 +170,14 @@ const rebase = async ({
 
 const findAndRebasePullRequestOnSameBase = async ({
   base,
+  debug,
   label,
   octokit,
   owner,
   repo,
 }: {
-  base: Reference;
+  base: Ref;
+  debug: Debug;
   label: LabelName;
   octokit: Octokit;
   owner: RepoOwner;
@@ -175,6 +185,7 @@ const findAndRebasePullRequestOnSameBase = async ({
 }): Promise<AbortAction | RebaseAction | NopAction> => {
   debug("searching for pull request to rebase on same base", base);
   const pullRequest = await findOldestPullRequest({
+    debug,
     extraSearchQualifiers: `base:${base}`,
     label,
     octokit,
@@ -185,6 +196,7 @@ const findAndRebasePullRequestOnSameBase = async ({
   debug("pull request to rebase on same base", pullRequest);
   return pullRequest
     ? rebase({
+        debug,
         label,
         octokit,
         owner,
@@ -195,6 +207,7 @@ const findAndRebasePullRequestOnSameBase = async ({
 };
 
 const autorebasePullRequest = async ({
+  debug,
   forceRebase,
   label,
   octokit,
@@ -202,6 +215,7 @@ const autorebasePullRequest = async ({
   pullRequest,
   repo,
 }: {
+  debug: Debug;
   forceRebase: boolean;
   label: LabelName;
   octokit: Octokit;
@@ -226,6 +240,7 @@ const autorebasePullRequest = async ({
     pullRequest.mergeableState === "behind";
   if (shouldBeRebased) {
     return rebase({
+      debug,
       label,
       octokit,
       owner,
@@ -235,6 +250,7 @@ const autorebasePullRequest = async ({
   }
   if (pullRequest.mergeableState === "clean") {
     return merge({
+      debug,
       head: pullRequest.head,
       octokit,
       owner,
@@ -260,14 +276,17 @@ const autorebase = async ({
   owner: RepoOwner;
   repo: RepoName;
 }): Promise<Action> => {
-  debug("starting", { label, name: event.name });
+  const debug = globalDebug.extend(event.id);
+  debug("received event", { event, label });
 
   if (event.name === "check_run" || event.name === "status") {
     const sha: Sha =
       event.name === "check_run"
         ? event.payload.check_run.head_sha
         : event.payload.sha;
+    debug("handling check_run or status event", { sha });
     const pullRequest = await findAutorebaseablePullRequestMatchingSha({
+      debug,
       label,
       octokit,
       owner,
@@ -279,6 +298,7 @@ const autorebase = async ({
       debug("autorebaseable pull request matching sha", pullRequest);
       if (pullRequest.mergeableState === "clean") {
         return merge({
+          debug,
           head: pullRequest.head,
           octokit,
           owner,
@@ -294,6 +314,7 @@ const autorebase = async ({
         // Autorebase will try to rebase another pull request based on the same branch.
         return findAndRebasePullRequestOnSameBase({
           base: pullRequest.base,
+          debug,
           label,
           octokit,
           owner,
@@ -302,56 +323,97 @@ const autorebase = async ({
       }
     }
   } else {
-    const pullRequest = await getPullRequestInfoWithKnownMergeableState({
-      label,
-      octokit,
-      owner,
-      pullRequest: event.payload.pull_request,
-      repo,
-    });
-    debug("pull request from payload", pullRequest);
+    const {
+      name,
+      payload: {
+        action,
+        pull_request: { number: pullRequestNumber },
+      },
+    } = event;
+    const { closed_at: closedAt, mergeable, merged } =
+      event.name === "pull_request"
+        ? event.payload.pull_request
+        : { closed_at: null, mergeable: null, merged: null };
+    const isAutorebaseSamePullRequestEvent =
+      event.name === "pull_request" &&
+      (action === "opened" ||
+        action === "synchronize" ||
+        (event.payload.action === "labeled" &&
+          event.payload.label.name === label)) &&
+      (mergeable || forceRebase) &&
+      closedAt === null;
+    const isRebasePullRequestOnSameBaseEvent =
+      name === "pull_request" && action === "closed" && merged;
+    const isMergeEvent = name === "pull_request_review";
 
-    if (event.name === "pull_request") {
-      if (
-        forceRebase ||
-        (pullRequest.labeledAndOpenedAndRebaseable &&
-          (event.payload.action === "opened" ||
-            event.payload.action === "synchronize" ||
-            (event.payload.action === "labeled" &&
-              event.payload.label.name === label)))
-      ) {
-        return autorebasePullRequest({
-          forceRebase,
-          label,
-          octokit,
-          owner,
-          pullRequest,
-          repo,
-        });
-      } else if (event.payload.action === "closed" && pullRequest.merged) {
+    debug({
+      action,
+      closedAt,
+      isAutorebaseSamePullRequestEvent,
+      isMergeEvent,
+      isRebasePullRequestOnSameBaseEvent,
+      mergeable,
+      merged,
+      name,
+    });
+
+    if (
+      isAutorebaseSamePullRequestEvent ||
+      isRebasePullRequestOnSameBaseEvent ||
+      isMergeEvent
+    ) {
+      const pullRequest = await getPullRequestInfoWithKnownMergeableState({
+        debug,
+        label,
+        octokit,
+        owner,
+        pullRequestNumber,
+        repo,
+      });
+      debug("pull request with known mergeable state", pullRequest);
+
+      if (isAutorebaseSamePullRequestEvent) {
+        if (forceRebase || pullRequest.labeledAndOpenedAndRebaseable) {
+          if (!pullRequest.labeledAndOpenedAndRebaseable) {
+            debug("force rebasing");
+          }
+          return autorebasePullRequest({
+            debug,
+            forceRebase,
+            label,
+            octokit,
+            owner,
+            pullRequest,
+            repo,
+          });
+        }
+      }
+
+      if (isRebasePullRequestOnSameBaseEvent) {
         return findAndRebasePullRequestOnSameBase({
           base: pullRequest.base,
+          debug,
           label,
           octokit,
           owner,
           repo,
         });
       }
-    } else if (
-      pullRequest.labeledAndOpenedAndRebaseable &&
-      event.name === "pull_request_review" &&
-      pullRequest.mergeableState === "clean"
-    ) {
-      return merge({
-        head: pullRequest.head,
-        octokit,
-        owner,
-        pullRequestNumber: pullRequest.pullRequestNumber,
-        repo,
-      });
+
+      if (pullRequest.labeledAndOpenedAndRebaseable) {
+        return merge({
+          debug,
+          head: pullRequest.head,
+          octokit,
+          owner,
+          pullRequestNumber,
+          repo,
+        });
+      }
     }
   }
 
+  debug("nop");
   return { type: "nop" };
 };
 

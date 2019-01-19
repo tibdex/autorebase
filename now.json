@@ -1,5 +1,5 @@
 {
-  "builds": [{ "src": "app/index.js", "use": "@now/node" }],
+  "builds": [{ "src": "src/index.ts", "use": "@now/node@canary" }],
   "env": {
     "APP_ID": "@autorebase-app-id",
     "DEBUG": "@autorebase-debug",
@@ -8,6 +8,6 @@
     "SENTRY_DSN": "@autorebase-sentry-dsn",
     "WEBHOOK_SECRET": "@autorebase-webhook-secret"
   },
-  "routes": [{ "src": "/", "dest": "app/index.js" }],
+  "routes": [{ "src": "/", "dest": "src/index.ts" }],
   "version": 2
 }

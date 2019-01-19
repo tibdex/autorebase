@@ -1,4 +1,5 @@
-version: 2
+version: 2.1
+
 jobs:
   check:
     docker:
@@ -6,7 +7,7 @@ jobs:
     steps:
       - checkout
       - run: yarn install --frozen-lockfile
-      - run: yarn run build
+      - run: yarn run check-build
       - run: yarn run test --coverage
       - run: yarn run tslint
       - run: yarn run prettier --list-different
@@ -24,19 +25,18 @@ jobs:
       - checkout
       - run: yarn install --frozen-lockfile
       - run: sudo yarn global add now --prefix /usr/local
-      - run: yarn build
       - run: now --no-clipboard --token $NOW_TOKEN
       - run: now --token $NOW_TOKEN alias $NOW_ALIAS
       - run: now --token $NOW_TOKEN rm autorebase --safe --yes
 
 workflows:
-  version: 2
   check:
     jobs:
       - check:
           filters:
             branches:
               ignore: master
+
   deploy:
     jobs:
       - deploy:
