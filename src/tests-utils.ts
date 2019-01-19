@@ -1,14 +1,18 @@
 import * as Octokit from "@octokit/rest";
 import * as envalid from "envalid";
 import { Application, createProbot } from "probot";
+import { GitHubAPI as createOctokit } from "probot/lib/github";
 import { createWebhookProxy } from "probot/lib/webhook-proxy";
 import {
-  deleteReference,
-  fetchReferenceSha,
-  Reference,
+  deleteRef,
+  fetchRefSha,
+  PullRequestNumber,
+  Ref,
   RepoName,
   RepoOwner,
 } from "shared-github-internals/lib/git";
+
+import { Debug, sleep, waitForKnownMergeableState } from "./utils";
 
 // tslint:disable-next-line:no-var-requires
 const isBase64 = require("is-base64");
@@ -31,6 +35,32 @@ const nop = () => {
 };
 
 const checkOrStatusName = "autorebase-test";
+
+const createUnthrottledOctokit = async ({
+  installationId,
+  jwt,
+}: {
+  installationId: number;
+  jwt: string;
+}) => {
+  const octokit: Octokit = createOctokit({
+    // @ts-ignore See https://www.npmjs.com/package/@octokit/plugin-throttling
+    throttle: {
+      enabled:
+        // Otherwise tests are slow.
+        // See https://github.com/probot/probot/blob/2ce0c98aae148318b70f237911ceb213f9d8986a/test/github.test.ts#L12-L13
+        false,
+    },
+  });
+  octokit.authenticate({ token: jwt, type: "app" });
+  const {
+    data: { token: installationAccessToken },
+  } = await octokit.apps.createInstallationToken({
+    installation_id: installationId,
+  });
+  octokit.authenticate({ token: installationAccessToken, type: "token" });
+  return octokit;
+};
 
 const createTestContext = async (
   applicationFunction: (app: Application) => void,
@@ -88,9 +118,13 @@ const createTestContext = async (
     id: env.TEST_APP_ID,
     secret: env.TEST_WEBHOOK_SECRET,
   });
-  const app = probot.load(applicationFunction);
-  // @ts-ignore
-  const octokit: Octokit = await app.auth(env.TEST_INSTALLATION_ID);
+  probot.load(applicationFunction);
+  // @ts-ignore We call this private method to generate the JWT the same way Probot does.
+  const jwt = probot.app();
+  const octokit = await createUnthrottledOctokit({
+    installationId: env.TEST_INSTALLATION_ID,
+    jwt,
+  });
 
   const startServer: StartServer = () => {
     const server = probot.server.listen(0);
@@ -126,10 +160,10 @@ const createCheckOrStatus = async ({
   mode: "check" | "status";
   octokit: Octokit;
   owner: RepoOwner;
-  ref: Reference;
+  ref: Ref;
   repo: RepoName;
 }) => {
-  const sha = await fetchReferenceSha({
+  const sha = await fetchRefSha({
     octokit,
     owner,
     ref,
@@ -166,7 +200,7 @@ const protectBranch = async ({
 }: {
   octokit: Octokit;
   owner: RepoOwner;
-  ref: Reference;
+  ref: Ref;
   repo: RepoOwner;
 }): Promise<DeleteProtectedBranch> => {
   await octokit.repos.updateBranchProtection({
@@ -184,7 +218,7 @@ const protectBranch = async ({
       owner,
       repo,
     });
-    await deleteReference({
+    await deleteRef({
       octokit,
       owner,
       ref: branch,
@@ -217,12 +251,98 @@ const waitForMockedHandlerCalls = <T>({
     );
   });
 };
+const debuggableStep = async (
+  name: string,
+  {
+    action,
+    debug,
+  }: {
+    action: () => Promise<void>;
+    debug: Debug;
+  },
+) => {
+  debug(`[start] ${name}`);
+  try {
+    await action();
+    debug(`[done] ${name}`);
+  } catch (error) {
+    debug(`[failed] ${name}`);
+    throw error;
+  }
+};
+
+const getLabelNames = async ({
+  octokit,
+  owner,
+  pullRequestNumber,
+  repo,
+}: {
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
+}) => {
+  const { data: labels } = await octokit.issues.listLabelsOnIssue({
+    number: pullRequestNumber,
+    owner,
+    repo,
+  });
+  return labels.map(({ name }) => name);
+};
+
+const getLastIssueComment = async ({
+  octokit,
+  owner,
+  pullRequestNumber,
+  repo,
+}: {
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
+}) => {
+  const { data: comments } = await octokit.issues.listComments({
+    number: pullRequestNumber,
+    owner,
+    repo,
+  });
+  expect(comments.length).toBeGreaterThanOrEqual(1);
+  return comments[comments.length - 1].body;
+};
+
+const sleepAndWaitForKnownMergeableState = ({
+  debug,
+  octokit,
+  owner,
+  pullRequestNumber,
+  repo,
+}: {
+  debug: Debug;
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
+}) =>
+  Promise.all([
+    sleep(2500),
+    waitForKnownMergeableState({
+      debug,
+      octokit,
+      owner,
+      pullRequestNumber,
+      repo,
+    }),
+  ]);
 
 export {
   createCheckOrStatus,
   createTestContext,
+  debuggableStep,
   DeleteProtectedBranch,
+  getLabelNames,
+  getLastIssueComment,
   protectBranch,
+  sleepAndWaitForKnownMergeableState,
   StartServer,
   StopServer,
   waitForMockedHandlerCalls,

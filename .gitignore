@@ -1,5 +1,4 @@
 /.env
-/app
 /coverage/
 /node_modules/
 /reports/

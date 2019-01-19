@@ -1,4 +1,4 @@
-import * as toLambda from "probot-serverless-now";
+import { toLambda } from "probot-serverless-now";
 
 import { createApplicationFunction } from "./app";
 
