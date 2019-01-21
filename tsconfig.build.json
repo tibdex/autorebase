@@ -1,4 +1,7 @@
 {
+  "compilerOptions": {
+    "noEmit": true
+  },
   "extends": "./tsconfig.json",
   "include": ["src/index.ts"]
 }
