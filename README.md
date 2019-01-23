@@ -87,7 +87,7 @@ Merge commits are often seen as undesirable clutter:
 - They make the Git graph much more complex and arguably harder to use.
 - They are often poorly named, such as "Merge #1337 into master", repeating what's already obvious.
 
-Besides, even when pull requests are "rebased and merged" (actually merged with the [`--ff-only`](https://git-scm.com/docs/git-merge#git-merge---ff-only) option), you can still, when looking at a commit on `master` in the GitHub UI, find out which pull request introduced it.
+See also this [Bitbucket article](https://www.atlassian.com/git/articles/git-team-workflows-merge-or-rebase) for a more in-depth comparison between the merge and rebase workflows. It lists traceability as the main advantage of the merge workflow. However, on GitHub, even when pull requests are "rebased and merged" (actually merged with the [`--ff-only`](https://git-scm.com/docs/git-merge#git-merge---ff-only) option), you can still, when looking at a commit on `master` in the GitHub web app, find out which pull request introduced it.
 
 ### Enforcing Rebase Merging
 
