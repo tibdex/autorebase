@@ -1,7 +1,6 @@
 import * as Octokit from "@octokit/rest";
 import * as envalid from "envalid";
 import { Application, createProbot } from "probot";
-import { GitHubAPI as createOctokit } from "probot/lib/github";
 import { createWebhookProxy } from "probot/lib/webhook-proxy";
 import {
   deleteRef,
@@ -14,8 +13,10 @@ import {
 
 import { Debug, sleep, waitForKnownMergeableState } from "./utils";
 
-// tslint:disable-next-line:no-var-requires
+// tslint:disable:no-var-requires
+const App = require("@octokit/app");
 const isBase64 = require("is-base64");
+// tslint:enable:no-var-requires
 
 type DeleteProtectedBranch = () => Promise<void>;
 
@@ -36,29 +37,21 @@ const nop = () => {
 
 const checkOrStatusName = "autorebase-test";
 
-const createUnthrottledOctokit = async ({
+// We don't use the one from Probot because it is throttled so it would make the tests slow.
+const createAuthenticatedOctokit = async ({
+  appId,
   installationId,
-  jwt,
+  privateKey,
 }: {
+  appId: number;
   installationId: number;
-  jwt: string;
+  privateKey: string;
 }) => {
-  const octokit: Octokit = createOctokit({
-    // @ts-ignore See https://www.npmjs.com/package/@octokit/plugin-throttling
-    throttle: {
-      enabled:
-        // Otherwise tests are slow.
-        // See https://github.com/probot/probot/blob/2ce0c98aae148318b70f237911ceb213f9d8986a/test/github.test.ts#L12-L13
-        false,
-    },
+  const app = new App({ id: appId, privateKey });
+  const installationAccessToken = await app.getInstallationAccessToken({
+    installationId,
   });
-  octokit.authenticate({ token: jwt, type: "app" });
-  const {
-    data: { token: installationAccessToken },
-  } = await octokit.apps.createInstallationToken({
-    installation_id: installationId,
-  });
-  octokit.authenticate({ token: installationAccessToken, type: "token" });
+  const octokit = new Octokit({ auth: `token ${installationAccessToken}` });
   return octokit;
 };
 
@@ -75,15 +68,15 @@ const createTestContext = async (
           " It must have at least the same permissions than the Autorebase GitHub App.",
       }),
       TEST_APP_PRIVATE_KEY: envalid.makeValidator(str => {
-        const privateKey = isBase64(str)
+        const privateKeyFromEnv = isBase64(str)
           ? Buffer.from(str, "base64").toString("utf8")
           : str;
         if (
           /-----BEGIN RSA PRIVATE KEY-----[\s\S]+-----END RSA PRIVATE KEY-----/m.test(
-            privateKey,
+            privateKeyFromEnv,
           )
         ) {
-          return privateKey;
+          return privateKeyFromEnv;
         }
         throw new Error("invalid GitHub App RSA private key");
       })({
@@ -112,18 +105,18 @@ const createTestContext = async (
 
   const repo = env.TEST_REPOSITORY_NAME;
   const owner = env.TEST_REPOSITORY_OWNER;
+  const privateKey = env.TEST_APP_PRIVATE_KEY as string;
 
   const probot = createProbot({
-    cert: env.TEST_APP_PRIVATE_KEY as string,
+    cert: privateKey,
     id: env.TEST_APP_ID,
     secret: env.TEST_WEBHOOK_SECRET,
   });
   probot.load(applicationFunction);
-  // @ts-ignore We call this private method to generate the JWT the same way Probot does.
-  const jwt = probot.app();
-  const octokit = await createUnthrottledOctokit({
+  const octokit = await createAuthenticatedOctokit({
+    appId: env.TEST_APP_ID,
     installationId: env.TEST_INSTALLATION_ID,
-    jwt,
+    privateKey,
   });
 
   const startServer: StartServer = () => {
