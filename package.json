@@ -8,6 +8,7 @@
   },
   "description": "GitHub App to automatically rebase and merge pull requests",
   "devDependencies": {
+    "@octokit/app": "^2.1.0",
     "@octokit/rest": "^16.8.0",
     "@types/debug": "^0.0.31",
     "@types/jest": "^23.3.13",
