@@ -277,11 +277,7 @@ const findAutorebaseablePullRequestMatchingSha = ({
     repo,
   });
 
-// Autorebase can be called multiple times in a short period of time.
-// It's better to ensure that these batches of calls don't end-up in concurrent rebase of the same pull request.
-// To prevent this from happening, we use a label as a lock.
-// Before Autorebase starts rebasing a pull request, it will acquire the lock by removing the label.
-// Subsequent Autorebase calls won't be able to do the same thing because the GitHub REST API prevents removing a label that's not already there.
+// See the FAQ in README.md for why we do that.
 const withLabelLock = async ({
   action,
   debug,

@@ -105,7 +105,15 @@ Because it creates merge commits and thus exacerbates the issue explained just a
 
 Rebasing rewrites the Git history so it's best not to do it on pull requests where several developers are collaborating and pushing commits to the head branch.
 
-## How Does Autorebase Compares with the Alternatives?
+## Why Is Autorebase Removing Its Own Label before Rebasing and Then Adding It Back?
+
+Autorebase can receive multiple webhooks for the same pull request in a short period of time.
+Letting these invocations try to concurrently rebase that pull request is unnecessary since [only one attempt would succeed anyway](https://www.npmjs.com/package/github-rebase#atomicity).
+To prevent this from happening, we use the `autorebase` label as a lock.
+Before Autorebase starts rebasing a pull request, it will acquire the lock by removing the label.
+Other concurrent Autorebase invocations won't be able to do the same thing because the GitHub REST API prevents removing a label from a pull request that doesn't have it.
+
+## How Does Autorebase Compare with the Alternatives?
 
 | Name                                                                               | No Merge Commits   | Stateless (no Database Required) | Ensure Up-to-Date Status Checks Without Manual Intervention / Test on Latest Before Merging | Comments                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ---------------------------------------------------------------------------------- | ------------------ | -------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
