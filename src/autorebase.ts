@@ -158,8 +158,37 @@ const rebase = async ({
   } catch (error) {
     const message = "rebase failed";
     debug(message, error);
+    const {
+      data: {
+        base: { ref: baseRef },
+        head: { ref: headRef },
+      },
+    } = await octokit.pulls.get({ number: pullRequestNumber, owner, repo });
     await octokit.issues.createComment({
-      body: [`The rebase failed:`, "", "```", error.message, "```"].join("\n"),
+      body: [
+        `The rebase failed:`,
+        "",
+        "```",
+        error.message,
+        "```",
+        "To rebase manually, run these commands in your terminal:",
+        "```bash",
+        "# Fetch latest updates from GitHub.",
+        "git fetch",
+        "# Create new working tree.",
+        `git worktree add .worktrees/rebase ${headRef}`,
+        "# Navigate to the new directory.",
+        "cd .worktrees/rebase",
+        "# Rebase and resolve the likely conflicts.",
+        `git rebase --interactive --autosquash ${baseRef}`,
+        "# Push the new branch state to GitHub.",
+        `git push --force`,
+        "# Go back to the original working tree.",
+        "cd ../..",
+        "# Delete the working tree.",
+        "git worktree remove .worktrees/rebase",
+        "```",
+      ].join("\n"),
       number: pullRequestNumber,
       owner,
       repo,
