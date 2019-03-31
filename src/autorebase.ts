@@ -25,6 +25,11 @@ import {
  */
 type AbortAction = { pullRequestNumber: PullRequestNumber; type: "abort" };
 
+type DenyOneTimeRebaseAction = {
+  pullRequestNumber: PullRequestNumber;
+  type: "deny-one-time-rebase";
+};
+
 type MergeAction = { pullRequestNumber: PullRequestNumber; type: "merge" };
 
 type RebaseAction = { pullRequestNumber: PullRequestNumber; type: "rebase" };
@@ -35,10 +40,15 @@ type NopAction = { type: "nop" };
 
 type Action =
   | AbortAction
+  | DenyOneTimeRebaseAction
   | FailedAction
   | MergeAction
   | RebaseAction
   | NopAction;
+
+type Username = string;
+
+type CommentBody = string;
 
 /**
  * See https://developer.github.com/webhooks/#events
@@ -49,6 +59,21 @@ type Event = { id: string } & (
       payload: {
         check_run: {
           head_sha: Sha;
+        };
+      };
+    }
+  | {
+      name: "issue_comment";
+      payload: {
+        comment: {
+          body: CommentBody;
+          user: {
+            login: Username;
+          };
+        };
+        issue: {
+          number: PullRequestNumber;
+          pull_request: any;
         };
       };
     }
@@ -78,6 +103,11 @@ type Event = { id: string } & (
         sha: Sha;
       };
     });
+
+// See https://developer.github.com/v3/repos/collaborators/#review-a-users-permission-level
+type Permission = "admin" | "write" | "read" | "none";
+
+type CanRebaseOneTime = (permission: Permission) => boolean;
 
 const globalDebug = createDebug("autorebase");
 
@@ -122,7 +152,7 @@ const rebase = async ({
   repo,
 }: {
   debug: Debug;
-  label: LabelName;
+  label?: LabelName;
   pullRequestNumber: PullRequestNumber;
   octokit: Octokit;
   owner: RepoOwner;
@@ -131,26 +161,32 @@ const rebase = async ({
   debug("rebasing", pullRequestNumber);
 
   try {
-    const rebased = await withLabelLock({
-      async action() {
-        await rebasePullRequest({
-          octokit,
-          owner,
-          pullRequestNumber,
-          repo,
-        });
-      },
-      debug,
-      label,
-      octokit,
-      owner,
-      pullRequestNumber,
-      repo,
-    });
+    const doRebase = async () => {
+      await rebasePullRequest({
+        octokit,
+        owner,
+        pullRequestNumber,
+        repo,
+      });
+    };
 
-    if (!rebased) {
-      debug("other process already rebasing, aborting", pullRequestNumber);
-      return { pullRequestNumber, type: "abort" };
+    if (label) {
+      const rebased = await withLabelLock({
+        action: doRebase,
+        debug,
+        label,
+        octokit,
+        owner,
+        pullRequestNumber,
+        repo,
+      });
+
+      if (!rebased) {
+        debug("other process already rebasing, aborting", pullRequestNumber);
+        return { pullRequestNumber, type: "abort" };
+      }
+    } else {
+      await doRebase();
     }
 
     debug("rebased", pullRequestNumber);
@@ -290,7 +326,54 @@ const autorebasePullRequest = async ({
   return { type: "nop" };
 };
 
+const rebaseOneTime = async ({
+  canRebaseOneTime,
+  debug,
+  octokit,
+  owner,
+  pullRequestNumber,
+  repo,
+  username,
+}: {
+  canRebaseOneTime: CanRebaseOneTime;
+  debug: Debug;
+  octokit: Octokit;
+  owner: RepoOwner;
+  pullRequestNumber: PullRequestNumber;
+  repo: RepoName;
+  username: Username;
+}): Promise<Action> => {
+  const {
+    data: { permission },
+  } = await octokit.repos.getCollaboratorPermissionLevel({
+    owner,
+    repo,
+    username,
+  });
+  if (canRebaseOneTime(permission)) {
+    await rebase({
+      debug,
+      octokit,
+      owner,
+      pullRequestNumber,
+      repo,
+    });
+    return { pullRequestNumber, type: "rebase" };
+  } else {
+    debug("denied one-time rebase");
+    await octokit.issues.createComment({
+      body:
+        "Rebase commands can only be submitted by collaborators with write permission on the repository.",
+      number: pullRequestNumber,
+      owner,
+      repo,
+    });
+    return { pullRequestNumber, type: "deny-one-time-rebase" };
+  }
+};
+
 const autorebase = async ({
+  canRebaseOneTime,
   event,
   forceRebase,
   label,
@@ -298,6 +381,7 @@ const autorebase = async ({
   owner,
   repo,
 }: {
+  canRebaseOneTime: CanRebaseOneTime;
   event: Event;
   forceRebase: boolean;
   label: LabelName;
@@ -308,7 +392,31 @@ const autorebase = async ({
   const debug = globalDebug.extend(event.id);
   debug("received event", { event, label });
 
-  if (event.name === "check_run" || event.name === "status") {
+  if (event.name === "issue_comment") {
+    const {
+      comment: {
+        body: comment,
+        user: { login: username },
+      },
+      issue: { number: pullRequestNumber, pull_request: pullRequestUrls },
+    } = event.payload;
+
+    if (
+      [`/${label}`, "/rebase"].includes(comment.trim()) &&
+      pullRequestUrls !== undefined
+    ) {
+      debug("handling one-time rebase command", { comment, username });
+      return rebaseOneTime({
+        canRebaseOneTime,
+        debug,
+        octokit,
+        owner,
+        pullRequestNumber,
+        repo,
+        username,
+      });
+    }
+  } else if (event.name === "check_run" || event.name === "status") {
     const sha: Sha =
       event.name === "check_run"
         ? event.payload.check_run.head_sha
@@ -446,4 +554,4 @@ const autorebase = async ({
   return { type: "nop" };
 };
 
-export { Action, autorebase, Event };
+export { Action, autorebase, CanRebaseOneTime, Event };

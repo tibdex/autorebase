@@ -1,14 +1,18 @@
 import * as Octokit from "@octokit/rest";
 import { Application } from "probot";
 
-import { Action, autorebase, Event } from "./autorebase";
+import { Action, autorebase, CanRebaseOneTime, Event } from "./autorebase";
 import { LabelName } from "./utils";
 
 type ActionHandler = (action: Action) => Promise<void>;
 
 type EventHandler = (event: Event) => Promise<boolean | void>;
 
+const requireWriteAccessForOneTimeRebase: CanRebaseOneTime = permission =>
+  permission === "admin" || permission === "write";
+
 type Options = {
+  canRebaseOneTime: CanRebaseOneTime;
   handleAction: ActionHandler;
   handleEvent: EventHandler;
   /**
@@ -23,6 +27,7 @@ const createApplicationFunction = (options: Options) => (app: Application) => {
   app.on(
     [
       "check_run.completed",
+      "issue_comment.created",
       "pull_request",
       "pull_request_review.submitted",
       "status",
@@ -42,6 +47,7 @@ const createApplicationFunction = (options: Options) => (app: Application) => {
       let action: Action = { type: "nop" };
       try {
         action = await autorebase({
+          canRebaseOneTime: options.canRebaseOneTime,
           event,
           forceRebase,
           label: options.label,
@@ -63,4 +69,4 @@ const createApplicationFunction = (options: Options) => (app: Application) => {
   );
 };
 
-export { createApplicationFunction };
+export { createApplicationFunction, requireWriteAccessForOneTimeRebase };

@@ -18,6 +18,12 @@ It integrates especially well in repositories with branch protection set up to e
 3.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the `autorebase` label to it](https://help.github.com/articles/creating-a-label/).
 4.  :sparkles: That's it! Pull requests with the `autorebase` label will then be rebased when their base branch moved forward ([`mergeable_state === "behind"`](https://developer.github.com/v4/enum/mergestatestatus/#behind)) and "rebased and merged" once all the branch protections are respected ([`mergeable_state === "clean"`](https://developer.github.com/v4/enum/mergestatestatus/#clean)).
 
+## One-time `/rebase` command
+
+Autorebase also supports one-time rebase commands: a collaborator with [write permssion](https://developer.github.com/v3/repos/collaborators/#review-a-users-permission-level) on a repository can post a `/rebase` comment on a pull request to rebase it once.
+
+_Note_: This feature is a convenient way to easily integrate upstream changes such as CI config edits or bug-fixes but it shouldn't be abused as rebasing rewrites the Git history and thus makes collaborating on a pull request harder. See [this discussion](https://github.com/tibdex/autorebase/issues/41) for more details.
+
 ## Demo
 
 ### Rebasing a pull request with out-of-date status checks
@@ -55,6 +61,7 @@ Autorebase relies on [`github-rebase`](https://www.npmjs.com/package/github-reba
 
 ### Webhooks
 
+- **Issue Comment**: to detect one-time `/rebase` commands.
 - **Pull request**: to detect when the `autorebase` label is added/removed and when a pull request is closed.
   Indeed, closing a pull request by merging its changes on its base branch may require rebasing other pull requests based on the same branch since they would now be outdated.
 
