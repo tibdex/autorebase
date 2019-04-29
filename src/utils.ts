@@ -187,8 +187,13 @@ const getPullRequestInfoWithKnownMergeableState = async ({
   });
 };
 
-const getPullRequestNumbers = (searchResults: any): PullRequestNumber[] =>
-  searchResults.items.map((item: any) => item.number);
+const getPullRequestNumbers = (searchResults: any): PullRequestNumber[] => {
+    if (searchResults["items"]) {
+        return searchResults.items.map((item: any) => item.number);
+    } else {
+        return searchResults.number;
+    }
+}
 
 const findOldestPullRequest = async ({
   debug,
