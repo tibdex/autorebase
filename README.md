@@ -20,7 +20,7 @@ It integrates especially well in repositories with branch protection set up to e
 
 ## One-time `/rebase` command
 
-Autorebase also supports one-time rebase commands: a collaborator with [write permssion](https://developer.github.com/v3/repos/collaborators/#review-a-users-permission-level) on a repository can post a `/rebase` comment on a pull request to rebase it once.
+Autorebase also supports one-time rebase commands: a collaborator with [write permission](https://developer.github.com/v3/repos/collaborators/#review-a-users-permission-level) on a repository can post a `/rebase` comment on a pull request to rebase it once.
 
 _Note_: This feature is a convenient way to easily integrate upstream changes such as CI config edits or bug-fixes but it shouldn't be abused as rebasing rewrites the Git history and thus makes collaborating on a pull request harder. See [this discussion](https://github.com/tibdex/autorebase/issues/41) for more details.
 
