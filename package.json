@@ -1,31 +1,31 @@
 {
   "dependencies": {
     "debug": "^4.1.1",
-    "github-rebase": "^1.0.0",
-    "probot-serverless-now": "^2.0.0",
+    "github-rebase": "^1.1.0",
+    "probot-serverless-now": "^2.1.0",
     "promise-retry": "^1.1.1",
-    "shared-github-internals": "^1.0.0"
+    "shared-github-internals": "^1.1.2"
   },
   "description": "GitHub App to automatically rebase and merge pull requests",
   "devDependencies": {
-    "@octokit/app": "^2.2.2",
-    "@octokit/rest": "^16.22.0",
-    "@types/debug": "^4.1.3",
-    "@types/jest": "^24.0.11",
-    "@types/node": "^11.12.2",
+    "@octokit/app": "^3.0.0",
+    "@octokit/rest": "^16.25.0",
+    "@types/debug": "^4.1.4",
+    "@types/jest": "^24.0.13",
+    "@types/node": "^12.0.7",
     "@types/promise-retry": "^1.1.3",
-    "envalid": "^4.2.2",
+    "envalid": "^5.0.0",
     "is-base64": "^0.1.0",
-    "jest": "^24.5.0",
-    "jest-circus": "^24.5.0",
-    "jest-junit": "^6.3.0",
-    "prettier": "^1.16.4",
-    "probot": "^9.0.2",
+    "jest": "^24.8.0",
+    "jest-circus": "^24.8.0",
+    "jest-junit": "^6.4.0",
+    "prettier": "^1.18.2",
+    "probot": "^9.2.13",
     "smee-client": "^1.1.0",
-    "ts-jest": "^24.0.1",
-    "tslint": "^5.14.0",
+    "ts-jest": "^24.0.2",
+    "tslint": "^5.17.0",
     "tslint-config-prettier": "^1.18.0",
-    "typescript": "^3.4.1"
+    "typescript": "^3.5.1"
   },
   "engines": {
     "node": ">= 8.10.0"
