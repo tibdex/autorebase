@@ -198,8 +198,8 @@ describe("label workflow", () => {
                 ],
               }),
               octokit.issues.addLabels({
+                issue_number: pullRequestANumber,
                 labels: [label],
-                number: pullRequestANumber,
                 owner,
                 repo,
               }),
@@ -266,8 +266,8 @@ describe("label workflow", () => {
                   ],
                 }),
                 octokit.issues.addLabels({
+                  issue_number: pullRequestBNumber,
                   labels: [label],
-                  number: pullRequestBNumber,
                   owner,
                   repo,
                 }),
@@ -497,8 +497,8 @@ describe("label workflow", () => {
                       debug("first call unblocked");
                     }),
                     octokit.issues.removeLabel({
+                      issue_number: pullRequestNumber,
                       name: label,
-                      number: pullRequestNumber,
                       owner,
                       repo,
                     }),
@@ -516,8 +516,8 @@ describe("label workflow", () => {
                     "unlabeled",
                   );
                   await octokit.issues.addLabels({
+                    issue_number: pullRequestNumber,
                     labels: [label],
-                    number: pullRequestNumber,
                     owner,
                     repo,
                   });
@@ -537,8 +537,8 @@ describe("label workflow", () => {
                   // Indeed, if two removal requests are made really close to one another (typically less than 10ms), GitHub will accept both of them.
                   octokit.pulls
                     .get({
-                      number: pullRequestNumber,
                       owner,
+                      pull_number: pullRequestNumber,
                       repo,
                     })
                     .then(unblockFirstCall);
@@ -568,8 +568,8 @@ describe("label workflow", () => {
               ],
             }),
             octokit.issues.addLabels({
+              issue_number: pullRequestNumber,
               labels: [label],
-              number: pullRequestNumber,
               owner,
               repo,
             }),
@@ -711,8 +711,8 @@ describe("label workflow", () => {
           ],
         }),
         octokit.issues.addLabels({
+          issue_number: pullRequestNumber,
           labels: [label],
-          number: pullRequestNumber,
           owner,
           repo,
         }),
@@ -800,7 +800,7 @@ describe("one-time rebase command", () => {
         }),
         octokit.issues.createComment({
           body: `/${label}`,
-          number: pullRequestNumber,
+          issue_number: pullRequestNumber,
           owner,
           repo,
         }),
@@ -833,7 +833,11 @@ describe("one-time rebase command", () => {
     test("pull request still opened", async () => {
       const {
         data: { closed_at: closedAt, merged },
-      } = await octokit.pulls.get({ number: pullRequestNumber, owner, repo });
+      } = await octokit.pulls.get({
+        owner,
+        pull_number: pullRequestNumber,
+        repo,
+      });
       expect(closedAt).toBeFalsy();
       expect(merged).toBeFalsy();
     });
@@ -901,7 +905,7 @@ describe("one-time rebase command", () => {
         }),
         octokit.issues.createComment({
           body: `/${label}`,
-          number: pullRequestNumber,
+          issue_number: pullRequestNumber,
           owner,
           repo,
         }),

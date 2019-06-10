@@ -110,8 +110,8 @@ const checkKnownMergeableState = async ({
 }): Promise<Octokit.PullsGetResponse> => {
   debug("fetching mergeable state", { pullRequestNumber });
   const { data: pullRequest } = await octokit.pulls.get({
-    number: pullRequestNumber,
     owner,
+    pull_number: pullRequestNumber,
     repo,
   });
   const { closed_at: closedAt, mergeable_state: mergeableState } = pullRequest;
@@ -187,13 +187,10 @@ const getPullRequestInfoWithKnownMergeableState = async ({
   });
 };
 
-const getPullRequestNumbers = (searchResults: any): PullRequestNumber[] => {
-    if (searchResults["items"]) {
-        return searchResults.items.map((item: any) => item.number);
-    } else {
-        return searchResults.number;
-    }
-}
+const getPullRequestNumbers = (searchResults: any): PullRequestNumber[] =>
+  searchResults.items
+    ? searchResults.items.map((item: any) => item.number)
+    : searchResults.number;
 
 const findOldestPullRequest = async ({
   debug,
@@ -303,8 +300,8 @@ const withLabelLock = async ({
   try {
     debug("acquiring lock", pullRequestNumber);
     await octokit.issues.removeLabel({
+      issue_number: pullRequestNumber,
       name: label,
-      number: pullRequestNumber,
       owner,
       repo,
     });
@@ -317,8 +314,8 @@ const withLabelLock = async ({
   await action();
   debug("releasing lock", pullRequestNumber);
   await octokit.issues.addLabels({
+    issue_number: pullRequestNumber,
     labels: [label],
-    number: pullRequestNumber,
     owner,
     repo,
   });

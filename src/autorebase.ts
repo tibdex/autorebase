@@ -129,8 +129,8 @@ const merge = async ({
   debug("merging", pullRequestNumber);
   await octokit.pulls.merge({
     merge_method: "rebase",
-    number: pullRequestNumber,
     owner,
+    pull_number: pullRequestNumber,
     repo,
   });
   debug("merged", pullRequestNumber);
@@ -199,7 +199,11 @@ const rebase = async ({
         base: { ref: baseRef },
         head: { ref: headRef },
       },
-    } = await octokit.pulls.get({ number: pullRequestNumber, owner, repo });
+    } = await octokit.pulls.get({
+      owner,
+      pull_number: pullRequestNumber,
+      repo,
+    });
     await octokit.issues.createComment({
       body: [
         `The rebase failed:`,
@@ -225,7 +229,7 @@ const rebase = async ({
         "git worktree remove .worktrees/rebase",
         "```",
       ].join("\n"),
-      number: pullRequestNumber,
+      issue_number: pullRequestNumber,
       owner,
       repo,
     });
@@ -364,7 +368,7 @@ const rebaseOneTime = async ({
     await octokit.issues.createComment({
       body:
         "Rebase commands can only be submitted by collaborators with write permission on the repository.",
-      number: pullRequestNumber,
+      issue_number: pullRequestNumber,
       owner,
       repo,
     });

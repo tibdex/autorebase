@@ -14,7 +14,7 @@ import {
 import { Debug, sleep, waitForKnownMergeableState } from "./utils";
 
 // tslint:disable:no-var-requires
-const App = require("@octokit/app");
+const { App } = require("@octokit/app");
 const isBase64 = require("is-base64");
 // tslint:enable:no-var-requires
 
@@ -276,7 +276,7 @@ const getLabelNames = async ({
   repo: RepoName;
 }) => {
   const { data: labels } = await octokit.issues.listLabelsOnIssue({
-    number: pullRequestNumber,
+    issue_number: pullRequestNumber,
     owner,
     repo,
   });
@@ -295,7 +295,7 @@ const getLastIssueComment = async ({
   repo: RepoName;
 }) => {
   const { data: comments } = await octokit.issues.listComments({
-    number: pullRequestNumber,
+    issue_number: pullRequestNumber,
     owner,
     repo,
   });
