@@ -17,18 +17,6 @@ jobs:
           path: coverage/lcov-report
           destination: coverage
 
-  deploy:
-    docker:
-      - image: circleci/node:8
-    working_directory: ~/autorebase
-    steps:
-      - checkout
-      - run: yarn install --frozen-lockfile
-      - run: sudo yarn global add now --prefix /usr/local
-      - run: now --no-clipboard --token $NOW_TOKEN
-      - run: now --token $NOW_TOKEN alias $NOW_ALIAS
-      - run: now --token $NOW_TOKEN rm autorebase --safe --yes
-
 workflows:
   check:
     jobs:
@@ -36,10 +24,3 @@ workflows:
           filters:
             branches:
               ignore: master
-
-  deploy:
-    jobs:
-      - deploy:
-          filters:
-            branches:
-              only: master

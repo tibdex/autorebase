@@ -1,22 +1,28 @@
-[![build status](https://img.shields.io/circleci/project/github/tibdex/autorebase.svg)](https://circleci.com/gh/tibdex/autorebase)
-
 <h1 align="center">
   <img src="assets/logo.svg" height="250" width="250" alt="Autorebase logo"/>
   <p>Autorebase</p>
 </h1>
 
-Autorebase aims to make the Rebase Workflow enjoyable and keep `master` always green. [Try it!](https://github.com/apps/autorebase)
+Autorebase aims to make the Rebase Workflow enjoyable and keep `master` always green.
 
 Autorebase is a GitHub App, based on [Probot](https://probot.github.io/), which automatically [rebases and merges](https://help.github.com/articles/about-merge-methods-on-github/#rebasing-and-merging-your-commits) pull requests.
 
 It integrates especially well in repositories with branch protection set up to enforce up-to-date status checks.
 
+# Maintenance update
+
+Focus has shifted to the development of [Autosquash](https://github.com/marketplace/actions/autosquash), the successor of Autorebase.
+
+Indeed:
+
+- The app can now be implemented more simply as a [GitHub Action](https://github.com/features/actions). With a GitHub Action, the Git rebase operation can now be done directly in the CLI instead of doing the complex REST calls made by [`github-rebase`](https://www.npmjs.com/package/github-rebase).
+- [GitHub is more suited for squash and merge than rebase and merge](https://github.com/tibdex/autosquash/tree/2aac7f4dbd29190dfaa3f8ef05ec0ed615f35f73#why-squash-and-merge).
+
 # Usage
 
-1.  :electric_plug: Install the publicly hosted [Autorebase GitHub App](https://github.com/apps/autorebase) on your repository.
-2.  :closed_lock_with_key: [recommended] Protect the branches on which pull requests will be made, such as `master`. In particular, it's best to [enable required status checks](https://help.github.com/articles/enabling-required-status-checks/) with the "Require branches to be up to date before merging" option.
-3.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the `autorebase` label to it](https://help.github.com/articles/creating-a-label/).
-4.  :sparkles: That's it! Pull requests with the `autorebase` label will then be rebased when their base branch moved forward ([`mergeable_state === "behind"`](https://developer.github.com/v4/enum/mergestatestatus/#behind)) and "rebased and merged" once all the branch protections are respected ([`mergeable_state === "clean"`](https://developer.github.com/v4/enum/mergestatestatus/#clean)).
+1.  :closed_lock_with_key: [recommended] Protect the branches on which pull requests will be made, such as `master`. In particular, it's best to [enable required status checks](https://help.github.com/articles/enabling-required-status-checks/) with the "Require branches to be up to date before merging" option.
+2.  :label: When you're ready to hand over a pull request to Autorebase, simply [add the `autorebase` label to it](https://help.github.com/articles/creating-a-label/).
+3.  :sparkles: That's it! Pull requests with the `autorebase` label will then be rebased when their base branch moved forward ([`mergeable_state === "behind"`](https://developer.github.com/v4/enum/mergestatestatus/#behind)) and "rebased and merged" once all the branch protections are respected ([`mergeable_state === "clean"`](https://developer.github.com/v4/enum/mergestatestatus/#clean)).
 
 ## One-time `/rebase` command
 
